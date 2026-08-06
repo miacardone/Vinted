@@ -1,118 +1,95 @@
 /**
  * Case lifecycle vocabulary.
  *
- * Statuses are operational rather than tenant-specific — an acquirer and a
- * marketplace both need "pended" to mean the same thing — so they live here
- * rather than in brand.config. Labels are still swappable if a tenant ever
- * disagrees; the ids are what the data and the rules engine key on.
+ * The reference product carried TWO parallel status systems — a 4-value
+ * `CaseStatus` and a 9-value `WorkState`, with a comment admitting the richer
+ * one had not been adopted everywhere. That split is a bug generator, so this
+ * build has exactly one status list and everything derives from it.
  */
 
 export const STATUSES = [
-  { id: 'open', label: 'Open', tone: 'neutral', stage: 'intake', description: 'Received, not yet triaged.' },
-  { id: 'ready', label: 'Ready', tone: 'info', stage: 'intake', description: 'Triaged and eligible for assignment.' },
-  { id: 'assigned', label: 'Assigned', tone: 'info', stage: 'active', description: 'Owned by an analyst, not yet started.' },
-  { id: 'working', label: 'Working', tone: 'primary', stage: 'active', description: 'Actively being worked.' },
-  { id: 'pended', label: 'Pended', tone: 'warning', stage: 'active', description: 'Waiting on a third party.' },
-  { id: 'represented', label: 'Represented', tone: 'primary', stage: 'submitted', description: 'Response submitted to the scheme.' },
-  { id: 'completed', label: 'Completed', tone: 'success', stage: 'closed', description: 'Resolved in our favour or accepted.' },
-  { id: 'rejected', label: 'Rejected', tone: 'danger', stage: 'closed', description: 'Representment declined by the issuer.' },
-  { id: 'expired', label: 'Expired', tone: 'danger', stage: 'closed', description: 'Response window elapsed.' },
-  { id: 'writtenOff', label: 'Written off', tone: 'muted', stage: 'closed', description: 'Accepted the loss deliberately.' },
+  { id: 'open', label: 'Open', tone: 'neutral', stage: 'intake', group: 'Representment Queues' },
+  { id: 'ready', label: 'Ready', tone: 'info', stage: 'intake', group: 'Representment Queues' },
+  { id: 'assigned', label: 'Assigned', tone: 'info', stage: 'active', group: 'Representment Queues' },
+  { id: 'working', label: 'Working', tone: 'primary', stage: 'active', group: 'Representment Queues' },
+  { id: 'pended', label: 'Pended', tone: 'warning', stage: 'active', group: 'Representment Queues' },
+  { id: 'represented', label: 'Represented', tone: 'primary', stage: 'submitted', group: 'Representment Queues' },
+  { id: 'completed', label: 'Completed', tone: 'success', stage: 'closed', group: 'Issues' },
+  { id: 'rejected', label: 'Rejected', tone: 'danger', stage: 'closed', group: 'Issues' },
+  { id: 'expired', label: 'Expired', tone: 'danger', stage: 'closed', group: 'Issues' },
+  { id: 'written_off', label: 'Written Off', tone: 'muted', stage: 'closed', group: 'Issues' },
 ];
 
-export const STATUS_IDS = STATUSES.map((s) => s.id);
+const BY_ID = Object.fromEntries(STATUSES.map((s) => [s.id, s]));
 
-const STATUS_MAP = Object.fromEntries(STATUSES.map((s) => [s.id, s]));
-
-export const getStatus = (id) => STATUS_MAP[id] ?? { id, label: id, tone: 'neutral', stage: 'active' };
-
+export const getStatus = (id) => BY_ID[id] ?? { id, label: id, tone: 'neutral', stage: 'active' };
 export const statusLabel = (id) => getStatus(id).label;
-
 export const statusTone = (id) => getStatus(id).tone;
 
-/** Closed statuses are what the Archived tab shows; everything else is Open. */
 export const CLOSED_STATUSES = STATUSES.filter((s) => s.stage === 'closed').map((s) => s.id);
+export const isClosed = (id) => CLOSED_STATUSES.includes(id);
+export const isOpen = (id) => !isClosed(id);
 
-export const isClosed = (statusId) => CLOSED_STATUSES.includes(statusId);
+/** Statuses an analyst can actually pick up and work. */
+export const WORKABLE_STATUSES = ['ready', 'assigned', 'working', 'pended'];
 
-export const isOpenStatus = (statusId) => !isClosed(statusId);
-
-/** Statuses that still consume analyst capacity — drives workload counts. */
-export const ACTIVE_STATUSES = ['assigned', 'working', 'pended'];
+/** Status Filter popover groups on Case management. */
+export const STATUS_GROUPS = ['Representment Queues', 'Issues'];
 
 /* ------------------------------------------------------------------ *
- * Resolutions
+ * Outcomes and document status
+ * ------------------------------------------------------------------ */
+
+export const OUTCOMES = [
+  { id: 'pending', label: 'Pending', tone: 'warning' },
+  { id: 'won', label: 'Won', tone: 'success' },
+  { id: 'lost', label: 'Lost', tone: 'danger' },
+  { id: 'written_off', label: 'Written Off', tone: 'muted' },
+];
+
+const OUTCOME_BY_ID = Object.fromEntries(OUTCOMES.map((o) => [o.id, o]));
+export const getOutcome = (id) => OUTCOME_BY_ID[id] ?? null;
+
+export const DOC_STATUSES = [
+  { id: 'received', label: 'Received', tone: 'success' },
+  { id: 'pending', label: 'Pending', tone: 'warning' },
+  { id: 'missing', label: 'Missing', tone: 'danger' },
+  { id: 'not_required', label: 'Not Required', tone: 'muted' },
+];
+
+const DOC_BY_ID = Object.fromEntries(DOC_STATUSES.map((d) => [d.id, d]));
+export const getDocStatus = (id) => DOC_BY_ID[id] ?? null;
+
+/* ------------------------------------------------------------------ *
+ * Resolutions — the four Actions tiles on Work case
  * ------------------------------------------------------------------ */
 
 export const RESOLUTIONS = [
-  {
-    id: 'represent',
-    label: 'Represent',
-    tone: 'primary',
-    nextStatus: 'represented',
-    description: 'Defend the transaction with compelling evidence.',
-    requiresAmount: false,
-  },
-  {
-    id: 'write_off',
-    label: 'Write off',
-    tone: 'muted',
-    nextStatus: 'writtenOff',
-    description: 'Accept the loss — recovery is not worth the handling cost.',
-    requiresAmount: false,
-  },
-  {
-    id: 'split',
-    label: 'Split / partial',
-    tone: 'warning',
-    nextStatus: 'represented',
-    description: 'Defend part of the amount and concede the rest.',
-    requiresAmount: true,
-  },
-  {
-    id: 'refund',
-    label: 'Refund',
-    tone: 'info',
-    nextStatus: 'completed',
-    description: 'Refund the buyer in full and close the case.',
-    requiresAmount: false,
-  },
-  {
-    id: 'request_info',
-    label: 'Request info',
-    tone: 'warning',
-    nextStatus: 'pended',
-    description: 'Pend the case pending documents from a third party.',
-    requiresAmount: false,
-  },
+  { id: 'representment', label: 'Representment', icon: 'shield', nextStatus: 'represented', outcome: 'pending', description: 'Defend the transaction with compelling evidence.' },
+  { id: 'write_off', label: 'Write Off', icon: 'archive', nextStatus: 'written_off', outcome: 'written_off', description: 'Accept the loss — recovery costs more than it returns.' },
+  { id: 'charge_entity', label: 'Charge to Entity', icon: 'building', nextStatus: 'completed', outcome: 'lost', description: 'Pass the liability to the selling entity.' },
+  { id: 'split_case', label: 'Split Case', icon: 'layers', nextStatus: 'represented', outcome: 'pending', description: 'Divide the amount across more than one outcome.' },
 ];
 
-const RESOLUTION_MAP = Object.fromEntries(RESOLUTIONS.map((r) => [r.id, r]));
-
-export const getResolution = (id) => RESOLUTION_MAP[id] ?? null;
+export const getResolution = (id) => RESOLUTIONS.find((r) => r.id === id) ?? null;
 
 /* ------------------------------------------------------------------ *
  * Priority — derived, never stored
  * ------------------------------------------------------------------ *
- * There is no "Case priority" admin page in this build (the client removed
- * it), so priority is computed from the due date and the risk amount instead
- * of being a field somebody has to maintain.
+ * There is no Case priority page in this build, so priority is computed from
+ * the due date and the amount rather than being a field somebody maintains.
  */
 
-export const PRIORITY_BANDS = [
-  { id: 'critical', label: 'Critical', tone: 'danger' },
-  { id: 'high', label: 'High', tone: 'warning' },
-  { id: 'normal', label: 'Normal', tone: 'neutral' },
-  { id: 'low', label: 'Low', tone: 'muted' },
-];
-
 export function priorityOf(caseRecord, riskAmount = 250) {
-  if (!caseRecord?.dueAt) return 'low';
-  const hours = (new Date(caseRecord.dueAt).getTime() - Date.now()) / 3600000;
-  const highValue = (caseRecord.amount ?? 0) >= riskAmount;
+  if (!caseRecord?.dueDate) return 'low';
+  const days = Math.floor((new Date(caseRecord.dueDate).getTime() - Date.now()) / 86_400_000);
+  const highValue = (caseRecord.disputeAmount ?? 0) >= riskAmount;
 
-  if (hours <= 24) return 'critical';
-  if (hours <= 72) return highValue ? 'critical' : 'high';
-  if (hours <= 168) return highValue ? 'high' : 'normal';
+  if (days < 0) return 'critical';
+  if (days <= 1) return 'critical';
+  if (days <= 3) return highValue ? 'critical' : 'high';
+  if (days <= 7) return highValue ? 'high' : 'normal';
   return 'low';
 }
+
+export const PRIORITY_TONE = { critical: 'danger', high: 'warning', normal: 'neutral', low: 'muted' };
