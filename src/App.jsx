@@ -1,0 +1,69 @@
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import BrandProvider from '@/brand/BrandProvider';
+import AuthProvider from '@/context/AuthContext';
+import ToastProvider from '@/context/ToastContext';
+import AppLayout from '@/components/layout/AppLayout';
+import RequireAuth from '@/components/layout/RequireAuth';
+import { ROUTES } from '@/data/navigation';
+
+import Login from '@/pages/Login';
+import Dashboard from '@/pages/Dashboard';
+import Placeholder from '@/pages/Placeholder';
+
+/**
+ * Routing follows our edited IA (data/navigation.js): no Case priority, no
+ * Unmatched docs, no Scheduler, Archived as a tab, Users as one page.
+ *
+ * Screens still being built render through Placeholder so the app stays
+ * navigable while the rebuild lands chunk by chunk.
+ */
+export function App() {
+  return (
+    <BrandProvider>
+      <AuthProvider>
+        <ToastProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route path={ROUTES.login} element={<Login />} />
+
+              <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
+                <Route index element={<Navigate to={ROUTES.dashboard} replace />} />
+                <Route path={ROUTES.dashboard} element={<Dashboard />} />
+
+                <Route path={ROUTES.ruleGroups} element={<Placeholder title="Rule groups" description="Automation that runs at intake and on a schedule." icon="layers" />} />
+                <Route path={ROUTES.addRule} element={<Placeholder title="Add rule" description="Build a rule from criteria, actions and details." icon="rules" />} />
+                <Route path={ROUTES.bulkActions} element={<Placeholder title="Bulk actions" description="Apply one change to many cases at once." icon="checklist" />} />
+                <Route path={ROUTES.ruleCheck} element={<Placeholder title="Rule check" description="Test one rule against one case." icon="searchCheck" />} />
+
+                <Route path={ROUTES.assignmentReasons} element={<Placeholder title="Assignment reasons" description="Reasons recorded whenever a case changes hands." icon="tag" />} />
+                <Route path={ROUTES.queueManagement} element={<Placeholder title="Queue management" description="Queues, service targets and live depth." icon="inbox" />} />
+                <Route path={ROUTES.caseManagement} element={<Placeholder title="Case management" description="Every case in one queue." icon="table" />} />
+                <Route path={ROUTES.uploadCases} element={<Placeholder title="Upload cases" description="Import cases from CSV." icon="upload" />} />
+
+                <Route path={ROUTES.workCase} element={<Placeholder title="Work case" description="Your workable cases." icon="briefcase" />} />
+                <Route path={ROUTES.workCaseDetail()} element={<Placeholder title="Work case" description="Work the documents and notes on a case." icon="briefcase" />} />
+
+                <Route path={ROUTES.reportsCenter} element={<Placeholder title="Reports center" description="Due-date pressure and reason-category totals." icon="pie" />} />
+                <Route path={ROUTES.monitoring} element={<Placeholder title="Monitoring" description="Document processing, outcomes and errors." icon="activity" />} />
+                <Route path={ROUTES.customReports} element={<Placeholder title="Custom reports" description="Build, preview and schedule a report." icon="spreadsheet" />} />
+
+                <Route path={ROUTES.users} element={<Placeholder title="Users" description="People, skills and permissions." icon="users" />} />
+                <Route path={ROUTES.apiDocumentation} element={<Placeholder title="API documentation" description="Endpoints, schemas and samples." icon="code" />} />
+
+                <Route path={ROUTES.accountSettings} element={<Placeholder title="Account settings" description="Your profile, password and sessions." icon="userCircle" />} />
+                <Route path={ROUTES.webhooks} element={<Placeholder title="Webhooks" description="Send case events to your own systems." icon="webhook" />} />
+                <Route path={ROUTES.systemPreferences} element={<Placeholder title="System preferences" description="Numbering, due-date offsets and thresholds." icon="sliders" />} />
+
+                <Route path={ROUTES.help} element={<Placeholder title="Help" description="Guides, reference material and support." icon="help" />} />
+
+                <Route path="*" element={<Navigate to={ROUTES.dashboard} replace />} />
+              </Route>
+            </Routes>
+          </BrowserRouter>
+        </ToastProvider>
+      </AuthProvider>
+    </BrandProvider>
+  );
+}
+
+export default App;
