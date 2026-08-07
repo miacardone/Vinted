@@ -10,6 +10,7 @@ import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
 import Placeholder from '@/pages/Placeholder';
 import CaseManagement from '@/pages/CaseManagement';
+import WorkCase from '@/pages/WorkCase';
 
 /**
  * Routing follows our edited IA (data/navigation.js): no Case priority, no
@@ -41,8 +42,8 @@ export function App() {
                 <Route path={ROUTES.caseManagement} element={<CaseManagement />} />
                 <Route path={ROUTES.uploadCases} element={<Placeholder title="Upload cases" description="Import cases from CSV." icon="upload" />} />
 
-                <Route path={ROUTES.workCase} element={<Placeholder title="Work case" description="Your workable cases." icon="briefcase" />} />
-                <Route path={ROUTES.workCaseDetail()} element={<Placeholder title="Work case" description="Work the documents and notes on a case." icon="briefcase" />} />
+                <Route path={ROUTES.workCase} element={<WorkCase />} />
+                <Route path={ROUTES.workCaseDetail()} element={<WorkCase />} />
 
                 <Route path={ROUTES.reportsCenter} element={<Placeholder title="Reports center" description="Due-date pressure and reason-category totals." icon="pie" />} />
                 <Route path={ROUTES.monitoring} element={<Placeholder title="Monitoring" description="Document processing, outcomes and errors." icon="activity" />} />
