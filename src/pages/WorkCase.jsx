@@ -18,6 +18,7 @@ import { STATUSES, getStatus } from '@/domain/statuses';
 import { useBrand } from '@/brand/BrandProvider';
 import { useToast } from '@/context/ToastContext';
 import { ROUTES } from '@/data/navigation';
+import { readPref, writePref } from '@/utils/storage';
 import { formatCurrency, formatDate, formatDateTime, formatNumber } from '@/utils/format';
 
 const DENSITY_KEY = 'ddc.workcase.density';
@@ -34,7 +35,7 @@ function RecordsView() {
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState({ ...EMPTY_FILTERS });
   const [advanced, setAdvanced] = useState(false);
-  const [density, setDensity] = useState(() => localStorage.getItem(DENSITY_KEY) ?? 'fit');
+  const [density, setDensity] = useState(() => readPref(DENSITY_KEY, 'fit'));
   const [hidden, setHidden] = useState(new Set());
   const [sort, setSort] = useState({ key: 'dueDate', dir: 'asc' });
   const [page, setPage] = useState(1);
@@ -66,7 +67,7 @@ function RecordsView() {
 
   const setDensityPref = (d) => {
     setDensity(d);
-    try { localStorage.setItem(DENSITY_KEY, d); } catch { /* private mode */ }
+    writePref(DENSITY_KEY, d);
   };
 
   return (

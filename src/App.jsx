@@ -8,7 +8,6 @@ import { ROUTES } from '@/data/navigation';
 
 import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
-import Placeholder from '@/pages/Placeholder';
 import CaseManagement from '@/pages/CaseManagement';
 import WorkCase from '@/pages/WorkCase';
 import RuleGroups from '@/pages/RuleGroups';
@@ -21,13 +20,17 @@ import UploadCases from '@/pages/UploadCases';
 import ReportsCenter from '@/pages/ReportsCenter';
 import Monitoring from '@/pages/Monitoring';
 import CustomReports from '@/pages/CustomReports';
+import Users from '@/pages/Users';
+import ApiDocumentation from '@/pages/ApiDocumentation';
+import AccountSettings from '@/pages/AccountSettings';
+import Webhooks from '@/pages/Webhooks';
+import SystemPreferences from '@/pages/SystemPreferences';
+import Help from '@/pages/Help';
 
 /**
  * Routing follows our edited IA (data/navigation.js): no Case priority, no
- * Unmatched docs, no Scheduler, Archived as a tab, Users as one page.
- *
- * Screens still being built render through Placeholder so the app stays
- * navigable while the rebuild lands chunk by chunk.
+ * Unmatched docs, no Scheduler page, Archived as a tab inside Case management,
+ * "Rule check" not "Criteria check", and Users as one page with tabs.
  */
 export function App() {
   return (
@@ -59,14 +62,14 @@ export function App() {
                 <Route path={ROUTES.monitoring} element={<Monitoring />} />
                 <Route path={ROUTES.customReports} element={<CustomReports />} />
 
-                <Route path={ROUTES.users} element={<Placeholder title="Users" description="People, skills and permissions." icon="users" />} />
-                <Route path={ROUTES.apiDocumentation} element={<Placeholder title="API documentation" description="Endpoints, schemas and samples." icon="code" />} />
+                <Route path={ROUTES.users} element={<Users />} />
+                <Route path={ROUTES.apiDocumentation} element={<ApiDocumentation />} />
 
-                <Route path={ROUTES.accountSettings} element={<Placeholder title="Account settings" description="Your profile, password and sessions." icon="userCircle" />} />
-                <Route path={ROUTES.webhooks} element={<Placeholder title="Webhooks" description="Send case events to your own systems." icon="webhook" />} />
-                <Route path={ROUTES.systemPreferences} element={<Placeholder title="System preferences" description="Numbering, due-date offsets and thresholds." icon="sliders" />} />
+                <Route path={ROUTES.accountSettings} element={<AccountSettings />} />
+                <Route path={ROUTES.webhooks} element={<Webhooks />} />
+                <Route path={ROUTES.systemPreferences} element={<SystemPreferences />} />
 
-                <Route path={ROUTES.help} element={<Placeholder title="Help" description="Guides, reference material and support." icon="help" />} />
+                <Route path={ROUTES.help} element={<Help />} />
 
                 <Route path="*" element={<Navigate to={ROUTES.dashboard} replace />} />
               </Route>

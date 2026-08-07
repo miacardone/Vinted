@@ -13,6 +13,7 @@ import { isClosed } from '@/domain/statuses';
 import { CASE_TYPES } from '@/domain/caseTypes';
 import { useToast } from '@/context/ToastContext';
 import { ROUTES } from '@/data/navigation';
+import { readPref, writePref } from '@/utils/storage';
 import { formatCurrency, formatDate, formatDateTime, formatNumber } from '@/utils/format';
 
 const DENSITY_KEY = 'ddc.cases.density';
@@ -118,7 +119,7 @@ export function CaseManagement() {
     queues: searchParams.get('queue') ? [searchParams.get('queue')] : [],
   }));
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [density, setDensity] = useState(() => localStorage.getItem(DENSITY_KEY) ?? 'fit');
+  const [density, setDensity] = useState(() => readPref(DENSITY_KEY, 'fit'));
   const [hidden, setHidden] = useState(new Set());
   const [sort, setSort] = useState({ key: 'dueDate', dir: 'asc' });
   const [selected, setSelected] = useState(new Set());
@@ -175,7 +176,7 @@ export function CaseManagement() {
 
   const setDensityPref = (d) => {
     setDensity(d);
-    try { localStorage.setItem(DENSITY_KEY, d); } catch { /* private mode */ }
+    writePref(DENSITY_KEY, d);
   };
 
   return (

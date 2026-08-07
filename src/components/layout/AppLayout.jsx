@@ -6,6 +6,7 @@ import { Popover, Tooltip } from '@/components/ui/Overlay';
 import { useAuth } from '@/context/AuthContext';
 import { useBrand } from '@/brand/BrandProvider';
 import { ROUTES } from '@/data/navigation';
+import { readPref, writePref } from '@/utils/storage';
 import { relativeTime } from '@/utils/format';
 
 const SIDEBAR_KEY = 'ddc.sidebarCollapsed';
@@ -109,12 +110,12 @@ function Topbar() {
 }
 
 export function AppLayout() {
-  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDEBAR_KEY) === 'true');
+  const [collapsed, setCollapsed] = useState(() => readPref(SIDEBAR_KEY) === 'true');
 
   const toggle = () => {
     setCollapsed((c) => {
       const next = !c;
-      try { localStorage.setItem(SIDEBAR_KEY, String(next)); } catch { /* private mode */ }
+      writePref(SIDEBAR_KEY, next);
       return next;
     });
   };
