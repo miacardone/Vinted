@@ -2,20 +2,21 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import BrandProvider from '@/brand/BrandProvider';
 import AuthProvider from '@/context/AuthContext';
 import ToastProvider from '@/context/ToastContext';
-import AppShell from '@/components/layout/AppShell';
-import ProtectedRoute from '@/components/layout/ProtectedRoute';
-import { ROUTES } from '@/utils/constants';
+import AppLayout from '@/components/layout/AppLayout';
+import RequireAuth from '@/components/layout/RequireAuth';
+import { ROUTES } from '@/data/navigation';
 
 import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
+import CaseManagement from '@/pages/CaseManagement';
+import WorkCase from '@/pages/WorkCase';
 import RuleGroups from '@/pages/RuleGroups';
+import AddRule from '@/pages/AddRule';
 import BulkActions from '@/pages/BulkActions';
 import RuleCheck from '@/pages/RuleCheck';
 import AssignmentReasons from '@/pages/AssignmentReasons';
 import QueueManagement from '@/pages/QueueManagement';
-import CaseManagement from '@/pages/CaseManagement';
 import UploadCases from '@/pages/UploadCases';
-import WorkCase from '@/pages/WorkCase';
 import ReportsCenter from '@/pages/ReportsCenter';
 import Monitoring from '@/pages/Monitoring';
 import CustomReports from '@/pages/CustomReports';
@@ -25,12 +26,11 @@ import AccountSettings from '@/pages/AccountSettings';
 import Webhooks from '@/pages/Webhooks';
 import SystemPreferences from '@/pages/SystemPreferences';
 import Help from '@/pages/Help';
-import NotFound from '@/pages/NotFound';
 
 /**
- * Provider order matters: brand tokens land on :root before anything paints,
- * auth gates the routes, and toasts sit outermost so any screen can confirm a
- * mutation.
+ * Routing follows our edited IA (data/navigation.js): no Case priority, no
+ * Unmatched docs, no Scheduler page, Archived as a tab inside Case management,
+ * "Rule check" not "Criteria check", and Users as one page with tabs.
  */
 export function App() {
   return (
@@ -41,17 +41,12 @@ export function App() {
             <Routes>
               <Route path={ROUTES.login} element={<Login />} />
 
-              <Route
-                element={
-                  <ProtectedRoute>
-                    <AppShell />
-                  </ProtectedRoute>
-                }
-              >
+              <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
                 <Route index element={<Navigate to={ROUTES.dashboard} replace />} />
                 <Route path={ROUTES.dashboard} element={<Dashboard />} />
 
                 <Route path={ROUTES.ruleGroups} element={<RuleGroups />} />
+                <Route path={ROUTES.addRule} element={<AddRule />} />
                 <Route path={ROUTES.bulkActions} element={<BulkActions />} />
                 <Route path={ROUTES.ruleCheck} element={<RuleCheck />} />
 
@@ -76,7 +71,7 @@ export function App() {
 
                 <Route path={ROUTES.help} element={<Help />} />
 
-                <Route path="*" element={<NotFound />} />
+                <Route path="*" element={<Navigate to={ROUTES.dashboard} replace />} />
               </Route>
             </Routes>
           </BrowserRouter>

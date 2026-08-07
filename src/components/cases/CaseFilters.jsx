@@ -1,242 +1,219 @@
-import { useState } from 'react';
+import { Popover } from '@/components/ui/Overlay';
+import { Button } from '@/components/ui/Surface';
+import { Modal } from '@/components/ui/Modal';
+import { SelectField, TextField } from '@/components/ui/Form';
 import Icon from '@/components/ui/Icon';
-import Button from '@/components/ui/Button';
-import { Select, TextInput } from '@/components/ui/Field';
-import { useBrand } from '@/brand/BrandProvider';
-import { STATUSES } from '@/domain/statuses';
+import brand from '@/brand/brand.config';
+import { STATUSES, STATUS_GROUPS } from '@/domain/statuses';
 import { CASE_TYPES } from '@/domain/caseTypes';
-import { ASSIGNABLE_ANALYSTS } from '@/data/users.seed';
-import { allReasonCodes } from '@/brand/brand.config';
+import { formatNumber } from '@/utils/format';
 
 /**
- * Search plus an advanced panel that stays collapsed until asked for.
+ * Status and Queue filter popovers, plus the advanced-filters modal.
  *
- * Scheme, reason code and cycle are chargeback-only concepts, so those inputs
- * only appear once the case-type filter has excluded claims — otherwise the
- * panel offers filters that cannot match a third of the book.
+ * Counts are computed from the rows actually in scope, so a count always
+ * matches how many rows the filter yields.
  */
-export function CaseFilters({ filters, onChange, resultCount }) {
-  const brand = useBrand();
-  const [advancedOpen, setAdvancedOpen] = useState(false);
 
-  const set = (patch) => onChange({ ...filters, ...patch });
+export const EMPTY_FILTERS = {
+  caseType: 'all',
+  statuses: [],
+  queues: [],
+  entity: '',
+  network: '',
+  reasonCode: '',
+  worker: '',
+  market: '',
+  amountMin: '',
+  amountMax: '',
+  dueWithin: '',
+};
 
-  const activeChips = [];
-  if (filters.caseType && filters.caseType !== 'all') {
-    activeChips.push({
-      key: 'caseType',
-      label: CASE_TYPES.find((t) => t.id === filters.caseType)?.label,
-      clear: () => set({ caseType: 'all' }),
-    });
-  }
-  (filters.statuses ?? []).forEach((s) =>
-    activeChips.push({
-      key: `status-${s}`,
-      label: STATUSES.find((x) => x.id === s)?.label,
-      clear: () => set({ statuses: filters.statuses.filter((x) => x !== s) }),
-    }),
-  );
-  if (filters.queueIds?.length) {
-    filters.queueIds.forEach((q) =>
-      activeChips.push({
-        key: `queue-${q}`,
-        label: brand.queues.find((x) => x.id === q)?.label,
-        clear: () => set({ queueIds: filters.queueIds.filter((x) => x !== q) }),
-      }),
-    );
-  }
-  if (filters.assigneeIds?.length) {
-    filters.assigneeIds.forEach((a) =>
-      activeChips.push({
-        key: `assignee-${a}`,
-        label: a === 'unassigned' ? 'Unassigned' : ASSIGNABLE_ANALYSTS.find((x) => x.id === a)?.name,
-        clear: () => set({ assigneeIds: filters.assigneeIds.filter((x) => x !== a) }),
-      }),
-    );
-  }
-  if (filters.amountMin) {
-    activeChips.push({ key: 'amountMin', label: `Min ${filters.amountMin}`, clear: () => set({ amountMin: '' }) });
-  }
-  if (filters.amountMax) {
-    activeChips.push({ key: 'amountMax', label: `Max ${filters.amountMax}`, clear: () => set({ amountMax: '' }) });
-  }
-  if (filters.dueWithinDays !== '' && filters.dueWithinDays != null) {
-    activeChips.push({
-      key: 'due',
-      label: `Due within ${filters.dueWithinDays}d`,
-      clear: () => set({ dueWithinDays: '' }),
-    });
-  }
+export function countActive(filters) {
+  return Object.entries(filters).filter(([k, v]) => {
+    if (k === 'caseType') return v !== 'all';
+    return Array.isArray(v) ? v.length > 0 : Boolean(v);
+  }).length;
+}
 
-  const showCardFilters = filters.caseType === 'chargeback';
-
+function FilterList({ groups, selected, onToggle, onAll }) {
   return (
-    <div className="stack stack--tight">
-      <div className="filters">
-        <div className="field" style={{ flex: 1, minWidth: 240 }}>
-          <div className="topbar__search" style={{ maxWidth: 'none' }}>
-            <Icon name="search" size={15} className="topbar__search-icon" />
-            <input
-              className="input"
-              type="search"
-              value={filters.search ?? ''}
-              onChange={(e) => set({ search: e.target.value })}
-              placeholder={`Case ID, ARN, order, item, ${brand.terms.buyer} or ${brand.terms.seller}…`}
-              aria-label="Search cases"
-            />
-          </div>
-        </div>
-
-        <Select
-          value={filters.caseType ?? 'all'}
-          onChange={(e) => set({ caseType: e.target.value })}
-          options={[{ value: 'all', label: 'All case types' }, ...CASE_TYPES.map((t) => ({ value: t.id, label: t.label }))]}
-          aria-label="Case type"
-        />
-
-        <Button
-          variant={advancedOpen ? 'subtle' : 'secondary'}
-          icon="filter"
-          onClick={() => setAdvancedOpen((v) => !v)}
-          aria-expanded={advancedOpen}
-        >
-          Advanced search
-        </Button>
-
-        {resultCount != null && <span className="small muted nowrap">{resultCount} matching</span>}
-      </div>
-
-      {activeChips.length > 0 && (
-        <div className="chip-row">
-          {activeChips.map((chip) => (
-            <span key={chip.key} className="chip">
-              {chip.label}
-              <button type="button" className="chip__remove" onClick={chip.clear} aria-label={`Remove ${chip.label}`}>
-                <Icon name="close" size={11} />
-              </button>
-            </span>
+    <>
+      <button type="button" className="popover__item" onClick={onAll}>
+        <input type="checkbox" className="checkbox" checked={selected.length === 0} readOnly />
+        <span className="strong">All</span>
+      </button>
+      {groups.map((group) => (
+        <div key={group.label}>
+          <div className="popover__group t-section-label">{group.label}</div>
+          {group.options.map((opt) => (
+            <button key={opt.value} type="button" className="popover__item" onClick={() => onToggle(opt.value)}>
+              <input type="checkbox" className="checkbox" checked={selected.includes(opt.value)} readOnly />
+              <span className="truncate">{opt.label}</span>
+              <span className="popover__count">{formatNumber(opt.count)}</span>
+            </button>
           ))}
-          <button
-            type="button"
-            className="chip"
-            style={{ background: 'transparent', color: 'var(--c-ink-muted)' }}
-            onClick={() =>
-              onChange({
-                ...filters,
-                statuses: [],
-                queueIds: [],
-                assigneeIds: [],
-                schemeIds: [],
-                reasonCodes: [],
-                entityIds: [],
-                markets: [],
-                amountMin: '',
-                amountMax: '',
-                dueWithinDays: '',
-                caseType: 'all',
-              })
-            }
-          >
-            Clear all
-          </button>
         </div>
-      )}
-
-      {advancedOpen && (
-        <div className="filters__advanced">
-          <Select
-            label="Status"
-            value=""
-            onChange={(e) => e.target.value && set({ statuses: [...new Set([...(filters.statuses ?? []), e.target.value])] })}
-            placeholder="Add a status…"
-            options={STATUSES.map((s) => ({ value: s.id, label: s.label }))}
-          />
-
-          <Select
-            label="Queue"
-            value=""
-            onChange={(e) => e.target.value && set({ queueIds: [...new Set([...(filters.queueIds ?? []), e.target.value])] })}
-            placeholder="Add a queue…"
-            options={brand.queues.map((q) => ({ value: q.id, label: q.label }))}
-          />
-
-          <Select
-            label="Assignee"
-            value=""
-            onChange={(e) => e.target.value && set({ assigneeIds: [...new Set([...(filters.assigneeIds ?? []), e.target.value])] })}
-            placeholder="Add an assignee…"
-            options={[
-              { value: 'unassigned', label: 'Unassigned' },
-              ...ASSIGNABLE_ANALYSTS.map((a) => ({ value: a.id, label: a.name })),
-            ]}
-          />
-
-          <Select
-            label="Entity"
-            value={filters.entityIds?.[0] ?? ''}
-            onChange={(e) => set({ entityIds: e.target.value ? [e.target.value] : [] })}
-            placeholder="Any entity"
-            options={brand.entities.map((en) => ({ value: en.id, label: en.label }))}
-          />
-
-          <Select
-            label="Market"
-            value={filters.markets?.[0] ?? ''}
-            onChange={(e) => set({ markets: e.target.value ? [e.target.value] : [] })}
-            placeholder="Any market"
-            options={brand.markets.map((m) => ({ value: m, label: m }))}
-          />
-
-          {showCardFilters && (
-            <>
-              <Select
-                label="Card scheme"
-                value={filters.schemeIds?.[0] ?? ''}
-                onChange={(e) => set({ schemeIds: e.target.value ? [e.target.value] : [] })}
-                placeholder="Any scheme"
-                options={brand.schemes.map((s) => ({ value: s.id, label: s.label }))}
-              />
-
-              <Select
-                label="Reason code"
-                value={filters.reasonCodes?.[0] ?? ''}
-                onChange={(e) => set({ reasonCodes: e.target.value ? [e.target.value] : [] })}
-                placeholder="Any reason code"
-                options={allReasonCodes(brand).map((rc) => ({
-                  value: rc.code,
-                  label: `${rc.code} — ${rc.label}`,
-                }))}
-              />
-            </>
-          )}
-
-          <TextInput
-            label={`Min amount (${brand.currency})`}
-            type="number"
-            min="0"
-            value={filters.amountMin ?? ''}
-            onChange={(e) => set({ amountMin: e.target.value })}
-          />
-
-          <TextInput
-            label={`Max amount (${brand.currency})`}
-            type="number"
-            min="0"
-            value={filters.amountMax ?? ''}
-            onChange={(e) => set({ amountMax: e.target.value })}
-          />
-
-          <TextInput
-            label="Due within (days)"
-            type="number"
-            value={filters.dueWithinDays ?? ''}
-            onChange={(e) => set({ dueWithinDays: e.target.value })}
-            hint="Negative values find overdue cases."
-          />
-        </div>
-      )}
-    </div>
+      ))}
+    </>
   );
 }
 
-export default CaseFilters;
+export function StatusFilter({ rows, selected, onChange }) {
+  const groups = STATUS_GROUPS.map((label) => ({
+    label,
+    options: STATUSES.filter((s) => s.group === label).map((s) => ({
+      value: s.id,
+      label: s.label,
+      count: rows.filter((r) => r.status === s.id).length,
+    })),
+  }));
+
+  const toggle = (value) =>
+    onChange(selected.includes(value) ? selected.filter((v) => v !== value) : [...selected, value]);
+
+  return (
+    <Popover
+      width={260}
+      trigger={({ toggle: open }) => (
+        <Button variant="secondary" size="sm" icon="filter" onClick={open}>
+          Status{selected.length > 0 && ` (${selected.length})`}
+        </Button>
+      )}
+    >
+      {() => <FilterList groups={groups} selected={selected} onToggle={toggle} onAll={() => onChange([])} />}
+    </Popover>
+  );
+}
+
+export function QueueFilter({ rows, selected, onChange }) {
+  const groups = [{
+    label: 'Queues',
+    options: brand.queues.map((q) => ({
+      value: q.id,
+      label: q.label,
+      count: rows.filter((r) => r.queueId === q.id).length,
+    })),
+  }];
+
+  const toggle = (value) =>
+    onChange(selected.includes(value) ? selected.filter((v) => v !== value) : [...selected, value]);
+
+  return (
+    <Popover
+      width={280}
+      trigger={({ toggle: open }) => (
+        <Button variant="secondary" size="sm" icon="inbox" onClick={open}>
+          Queue{selected.length > 0 && ` (${selected.length})`}
+        </Button>
+      )}
+    >
+      {() => <FilterList groups={groups} selected={selected} onToggle={toggle} onAll={() => onChange([])} />}
+    </Popover>
+  );
+}
+
+export function AdvancedFiltersModal({ open, onClose, filters, onApply }) {
+  const set = (patch) => onApply({ ...filters, ...patch });
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Advanced search"
+      size="lg"
+      footer={
+        <>
+          <Button variant="ghost" onClick={() => onApply({ ...EMPTY_FILTERS })}>Reset all</Button>
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" onClick={onClose}>Apply filters</Button>
+        </>
+      }
+    >
+      <div className="grid grid--3">
+        <SelectField
+          label="Case type"
+          value={filters.caseType}
+          onChange={(e) => set({ caseType: e.target.value })}
+          options={[{ value: 'all', label: 'All case types' }, ...CASE_TYPES.map((t) => ({ value: t.id, label: t.label }))]}
+        />
+        <SelectField
+          label="Entity"
+          value={filters.entity}
+          onChange={(e) => set({ entity: e.target.value })}
+          placeholder="Any entity"
+          options={brand.entities.map((e) => ({ value: e.id, label: e.label }))}
+        />
+        <SelectField
+          label="Market"
+          value={filters.market}
+          onChange={(e) => set({ market: e.target.value })}
+          placeholder="Any market"
+          options={brand.markets.map((m) => ({ value: m, label: m }))}
+        />
+
+        <SelectField
+          label="Card scheme"
+          value={filters.network}
+          onChange={(e) => set({ network: e.target.value })}
+          placeholder="Any scheme"
+          options={brand.schemes.map((s) => ({ value: s.id, label: s.label }))}
+          hint="Chargebacks only"
+        />
+        <SelectField
+          label="Reason code"
+          value={filters.reasonCode}
+          onChange={(e) => set({ reasonCode: e.target.value })}
+          placeholder="Any reason"
+          options={[
+            ...brand.schemes.flatMap((s) => s.reasonCodes.map((rc) => ({ value: rc.code, label: `${s.short} ${rc.code}` }))),
+            ...brand.claimReasons.map((r) => ({ value: r.id, label: r.label })),
+          ]}
+        />
+        <TextField
+          label="Assigned to"
+          value={filters.worker}
+          onChange={(e) => set({ worker: e.target.value })}
+          placeholder="Email contains…"
+        />
+
+        <TextField label={`Min amount (${brand.currency})`} type="number" min="0" value={filters.amountMin} onChange={(e) => set({ amountMin: e.target.value })} />
+        <TextField label={`Max amount (${brand.currency})`} type="number" min="0" value={filters.amountMax} onChange={(e) => set({ amountMax: e.target.value })} />
+        <TextField label="Due within (days)" type="number" value={filters.dueWithin} onChange={(e) => set({ dueWithin: e.target.value })} hint="Negative finds overdue cases." />
+      </div>
+
+      <p className="micro subtle row row--xtight" style={{ marginTop: 'var(--s-4)' }}>
+        <Icon name="info" size={12} />
+        Scheme and reason-code filters only narrow chargebacks — claims carry no card leg.
+      </p>
+    </Modal>
+  );
+}
+
+/** The predicate every case view shares. */
+export function applyFilters(rows, filters, search) {
+  const q = search.trim().toLowerCase();
+
+  return rows.filter((r) => {
+    if (filters.caseType !== 'all' && r.caseType !== filters.caseType) return false;
+    if (filters.statuses.length && !filters.statuses.includes(r.status)) return false;
+    if (filters.queues.length && !filters.queues.includes(r.queueId)) return false;
+    if (filters.entity && r.entityId !== filters.entity) return false;
+    if (filters.market && r.market !== filters.market) return false;
+    if (filters.network && r.network !== filters.network) return false;
+    if (filters.reasonCode && r.reasonCode !== filters.reasonCode) return false;
+    if (filters.worker && !r.worker.toLowerCase().includes(filters.worker.toLowerCase())) return false;
+    if (filters.amountMin && r.disputeAmount < Number(filters.amountMin)) return false;
+    if (filters.amountMax && r.disputeAmount > Number(filters.amountMax)) return false;
+
+    if (filters.dueWithin !== '') {
+      const days = Math.floor((new Date(r.dueDate).getTime() - Date.now()) / 86_400_000);
+      if (days > Number(filters.dueWithin)) return false;
+    }
+
+    if (!q) return true;
+    return [r.id, r.arn, r.orderId, r.itemTitle, r.buyer, r.seller, r.cardholder, r.reasonCode, r.reasonLabel, r.worker, r.merchantRef]
+      .filter(Boolean)
+      .some((v) => String(v).toLowerCase().includes(q));
+  });
+}

@@ -1,393 +1,350 @@
-import { Fragment, useState } from 'react';
-import PageHeader from '@/components/layout/PageHeader';
-import Card, { CardBody, CardHead } from '@/components/ui/Card';
-import Tabs, { SubTabs } from '@/components/ui/Tabs';
-import Button from '@/components/ui/Button';
+import { useMemo, useState } from 'react';
+import { PageHeader, Card, Toolbar, Tabs, SubTabs, Button, IconButton, Badge, Stepper } from '@/components/ui/Surface';
+import { DataTable, ExportButtons } from '@/components/ui/DataTable';
+import { Modal } from '@/components/ui/Modal';
+import { CheckboxRow, SearchInput, SelectField, TextAreaField, TextField } from '@/components/ui/Form';
+import { Tooltip, TruncatedText } from '@/components/ui/Overlay';
 import Icon from '@/components/ui/Icon';
-import Modal from '@/components/ui/Modal';
-import { Badge } from '@/components/ui/Badge';
-import { Select, Textarea, TextInput } from '@/components/ui/Field';
-import { AsyncBoundary, SkeletonRows } from '@/components/ui/Feedback';
-import { useAsync } from '@/hooks/useAsync';
+import { GROUPS, ROLES, SKILLS, SKILL_OPTIONS, USERS, USER_GROUPS, USER_STATUSES } from '@/data/people';
+import { ALL_PERMISSIONS, DEFAULT_GRANTS, PERMISSION_GROUPS, PERMISSION_ROLES } from '@/data/permissions';
+import { CRITERIA_CATEGORIES } from '@/domain/criteria';
 import { useToast } from '@/context/ToastContext';
-import {
-  listGroups,
-  listPermissions,
-  listRoles,
-  listSkills,
-  listUsers,
-  saveUser,
-  setPermission,
-} from '@/services/users.service';
-import { relativeTime } from '@/utils/format';
+import { formatDate, formatNumber } from '@/utils/format';
 
 /**
- * ONE page, not a dropdown.
- *
- * Three tabs — User management, Skills, Permissions — with Users/Roles/Groups
- * as sub-tabs inside the first. Splitting these across separate nav entries
- * made people hunt for "where do I add a role?"; they are all the same job.
+ * Users — ONE page with tabs, not a dropdown of three separate screens.
+ * User management carries Users / Roles / Groups as sub-tabs.
  */
+
 const TABS = [
-  { id: 'management', label: 'User management' },
-  { id: 'skills', label: 'Skills' },
-  { id: 'permissions', label: 'Permissions' },
+  { value: 'management', label: 'User management' },
+  { value: 'skills', label: 'Skills' },
+  { value: 'permissions', label: 'Permissions' },
 ];
 
 const SUB_TABS = [
-  { id: 'users', label: 'Users' },
-  { id: 'roles', label: 'Roles' },
-  { id: 'groups', label: 'Groups' },
+  { value: 'users', label: 'Users' },
+  { value: 'roles', label: 'Roles' },
+  { value: 'groups', label: 'Groups' },
 ];
 
-const STATUS_TONE = { active: 'success', suspended: 'warning', invited: 'info' };
+/* ---------- Create user ---------- */
+
+function UserModal({ open, onClose, onSave }) {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState(ROLES[2].name);
+  const [group, setGroup] = useState(USER_GROUPS[1]);
+  const [skills, setSkills] = useState([SKILL_OPTIONS[0]]);
+
+  const valid = name.trim() && /.+@.+\..+/.test(email);
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Create user"
+      size="lg"
+      footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button variant="primary" disabled={!valid} onClick={() => { onSave({ name: name.trim(), email: email.trim(), role, group, skills }); setName(''); setEmail(''); }}>Create user</Button></>}
+    >
+      <div className="stack">
+        <TextField label="Full name" required value={name} onChange={(e) => setName(e.target.value)} />
+        <TextField label="Email" required type="email" value={email} onChange={(e) => setEmail(e.target.value)} error={email && !/.+@.+\..+/.test(email) ? 'Enter a valid email address.' : undefined} />
+
+        <div className="grid grid--2">
+          <SelectField label="Role" required value={role} onChange={(e) => setRole(e.target.value)} options={ROLES.map((r) => ({ value: r.name, label: r.name }))} />
+          <SelectField label="Group" value={group} onChange={(e) => setGroup(e.target.value)} options={USER_GROUPS.map((g) => ({ value: g, label: g }))} />
+        </div>
+
+        <div className="field">
+          <span className="field__label">Skills</span>
+          <div className="grid grid--2" style={{ gap: 'var(--s-2)' }}>
+            {SKILL_OPTIONS.map((s) => (
+              <CheckboxRow
+                key={s}
+                label={s}
+                checked={skills.includes(s)}
+                onChange={() => setSkills((p) => (p.includes(s) ? p.filter((x) => x !== s) : [...p, s]))}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/* ---------- Create skill (3-step) ---------- */
+
+function SkillModal({ open, onClose, onSave }) {
+  const [step, setStep] = useState(0);
+  const [criteria, setCriteria] = useState(CRITERIA_CATEGORIES[2].key);
+  const [operator, setOperator] = useState('is');
+  const [value, setValue] = useState('');
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+
+  const STEPS = ['Criteria', 'Modify Criteria', 'Skill Details'];
+  const canNext = step === 0 ? Boolean(criteria) : step === 1 ? Boolean(value) : Boolean(name.trim());
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Create skill"
+      size="lg"
+      footer={
+        <>
+          {step > 0 && <Button variant="secondary" onClick={() => setStep(step - 1)}>Back</Button>}
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          {step < 2
+            ? <Button variant="primary" disabled={!canNext} onClick={() => setStep(step + 1)}>Next</Button>
+            : <Button variant="primary" disabled={!canNext} onClick={() => { onSave({ name: name.trim(), criteria: `${criteria} ${operator} ${value}`, description: description.trim() }); setStep(0); setName(''); setValue(''); }}>Create skill</Button>}
+        </>
+      }
+    >
+      <div className="stack">
+        <Stepper steps={STEPS} current={step} />
+
+        {step === 0 && (
+          <SelectField label="Match on" required value={criteria} onChange={(e) => setCriteria(e.target.value)} options={CRITERIA_CATEGORIES.map((c) => ({ value: c.key, label: c.label }))} />
+        )}
+        {step === 1 && (
+          <div className="grid grid--2">
+            <SelectField label="Operator" value={operator} onChange={(e) => setOperator(e.target.value)} options={['is', 'is not', 'is greater than', 'is less than'].map((o) => ({ value: o, label: o }))} />
+            <TextField label="Value" required value={value} onChange={(e) => setValue(e.target.value)} />
+          </div>
+        )}
+        {step === 2 && (
+          <div className="stack stack--tight">
+            <TextField label="Skill name" required value={name} onChange={(e) => setName(e.target.value)} />
+            <TextAreaField label="Description" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
+            <div style={{ padding: 'var(--s-3)', background: 'var(--c-surface-sunken)', borderRadius: 'var(--r-md)' }}>
+              <span className="t-section-label">Summary</span>
+              <p className="small">Matches when <strong>{criteria}</strong> {operator} <strong>{value}</strong>.</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+/* ---------- Permissions ---------- */
+
+function Permissions() {
+  const [roleId, setRoleId] = useState(PERMISSION_ROLES[0].id);
+  const [grants, setGrants] = useState(() =>
+    Object.fromEntries(Object.entries(DEFAULT_GRANTS).map(([k, v]) => [k, new Set(v)])));
+
+  const role = PERMISSION_ROLES.find((r) => r.id === roleId);
+  const granted = grants[roleId];
+  const total = ALL_PERMISSIONS.length;
+
+  const toggle = (perm) => {
+    setGrants((prev) => {
+      const next = new Set(prev[roleId]);
+      if (next.has(perm)) next.delete(perm); else next.add(perm);
+      return { ...prev, [roleId]: next };
+    });
+  };
+
+  return (
+    <div className="stack stack--tight">
+      <Tabs
+        tabs={PERMISSION_ROLES.map((r) => ({ value: r.id, label: r.name, badge: `${grants[r.id].size}/${total}` }))}
+        value={roleId}
+        onChange={setRoleId}
+      />
+
+      <Card
+        title={`${role.name} permissions`}
+        action={<span className="micro subtle">{granted.size} of {total} granted</span>}
+      >
+        <p className="row row--xtight small muted" style={{ marginBottom: 'var(--s-4)' }}>
+          <Icon name="shield" size={14} style={{ color: 'var(--c-primary)' }} />
+          {role.description}
+        </p>
+
+        <div className="stack stack--loose">
+          {PERMISSION_GROUPS.map((group) => (
+            <div key={group.area}>
+              <h3 className="t-section-label" style={{ marginBottom: 'var(--s-2)' }}>{group.area}</h3>
+              <div className="perm-grid">
+                {group.permissions.map((perm) => {
+                  const on = granted.has(perm);
+
+                  /**
+                   * An UNGRANTED permission is a plain bordered row with a grey
+                   * label and NO TOGGLE — not a toggle in the off position.
+                   * Compare Manager's "Delete Cases" to Admin's.
+                   */
+                  if (!on) {
+                    return (
+                      <Tooltip key={perm} label={`${role.name} does not have ${perm}. Grant it from a role with the Permissions capability.`} wide>
+                        <div className="perm-row perm-row--denied">
+                          <span>{perm}</span>
+                        </div>
+                      </Tooltip>
+                    );
+                  }
+
+                  return (
+                    <button key={perm} type="button" className="perm-row perm-row--granted" onClick={() => toggle(perm)}>
+                      <span>{perm}</span>
+                      <input type="checkbox" className="toggle" checked readOnly tabIndex={-1} aria-label={`${perm} granted`} />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+/* ---------- Page ---------- */
 
 export function Users() {
   const { notify } = useToast();
   const [tab, setTab] = useState('management');
   const [subTab, setSubTab] = useState('users');
-  const [editing, setEditing] = useState(null);
-  const [saving, setSaving] = useState(false);
+  const [users, setUsers] = useState(USERS);
+  const [skills, setSkills] = useState(SKILLS);
+  const [search, setSearch] = useState('');
+  const [userModal, setUserModal] = useState(false);
+  const [skillModal, setSkillModal] = useState(false);
 
-  const { data: users, status, error, run: reloadUsers } = useAsync(listUsers, []);
-  const { data: roles } = useAsync(listRoles, []);
-  const { data: groups } = useAsync(listGroups, []);
-  const { data: skills } = useAsync(listSkills, []);
-  const { data: permissionGroups, run: reloadPermissions } = useAsync(listPermissions, []);
+  const filteredUsers = users.filter((u) => `${u.name} ${u.email} ${u.role}`.toLowerCase().includes(search.toLowerCase()));
 
-  const roleLabel = (roleId) => roles?.find((r) => r.id === roleId)?.label ?? roleId;
+  const userColumns = [
+    {
+      key: 'name', header: 'Name', fw: 14,
+      cell: (u) => (
+        <span className="row row--xtight row--nowrap" style={{ minWidth: 0 }}>
+          <span className="avatar avatar--sm avatar--tint">{u.initials}</span>
+          <span className="stack stack--xtight" style={{ minWidth: 0 }}>
+            <span className="small strong truncate">{u.name}</span>
+            <TruncatedText value={u.email} className="micro subtle" />
+          </span>
+        </span>
+      ),
+    },
+    { key: 'role', header: 'Role', fw: 9, cell: (u) => <span className="small">{u.role}</span> },
+    { key: 'group', header: 'Group', fw: 8, cell: (u) => <span className="small">{u.group}</span> },
+    { key: 'skills', header: 'Skills', fw: 12, cell: (u) => <TruncatedText value={u.skills.join(', ')} className="micro subtle" /> },
+    { key: 'status', header: 'Status', fw: 6, cell: (u) => <Badge tone={u.status === 'Active' ? 'success' : 'muted'} dot>{u.status}</Badge> },
+    { key: 'confirmation', header: 'Confirmation', fw: 9, cell: (u) => <span className="micro subtle">{u.confirmation}</span> },
+    { key: 'lockStatus', header: 'Lock', fw: 5, cell: (u) => <Badge tone={u.lockStatus === 'Locked' ? 'danger' : 'muted'}>{u.lockStatus}</Badge> },
+    { key: 'startDate', header: 'Start date', fw: 7, cell: (u) => <span className="small">{formatDate(u.startDate)}</span> },
+    { key: 'actions', header: 'Actions', fw: 5, width: '52px', cell: () => <IconButton icon="edit" label="Edit user" size={13} onClick={() => notify('Edit user opens the same modal as Create.')} /> },
+  ];
 
-  const saveUserRecord = async () => {
-    setSaving(true);
-    try {
-      await saveUser(editing);
-      notify(editing.id ? 'User updated.' : 'User invited.', 'success');
-      setEditing(null);
-      await reloadUsers();
-    } catch (err) {
-      notify(err.message ?? 'Could not save the user.', 'danger');
-    } finally {
-      setSaving(false);
-    }
-  };
+  const roleColumns = [
+    { key: 'name', header: 'Role', fw: 10, cell: (r) => <span className="small strong">{r.name}</span> },
+    { key: 'description', header: 'Description', fw: 20, cell: (r) => <TruncatedText value={r.description} className="small muted" /> },
+    { key: 'users', header: 'Members', fw: 6, align: 'right', cell: (r) => <span className="mono small">{formatNumber(users.filter((u) => u.role === r.name).length)}</span> },
+    { key: 'dateCreated', header: 'Date created', fw: 8, cell: (r) => <span className="small">{formatDate(r.dateCreated)}</span> },
+  ];
 
-  const togglePermission = async (permissionId, roleId, next) => {
-    try {
-      await setPermission(permissionId, roleId, next);
-      await reloadPermissions();
-    } catch (err) {
-      notify(err.message ?? 'Could not change the permission.', 'danger');
-    }
-  };
+  const groupColumns = [
+    { key: 'name', header: 'Group', fw: 10, cell: (g) => <span className="small strong">{g.name}</span> },
+    { key: 'description', header: 'Description', fw: 18, cell: (g) => <TruncatedText value={g.description} className="small muted" /> },
+    { key: 'members', header: 'Members', fw: 6, align: 'right', cell: (g) => <span className="mono small">{users.filter((u) => u.group === g.name).length}</span> },
+    {
+      key: 'who', header: 'Who', fw: 10,
+      cell: (g) => (
+        <span className="row row--xtight">
+          {users.filter((u) => u.group === g.name).slice(0, 6).map((u) => (
+            <Tooltip key={u.id} label={u.name}><span className="avatar avatar--sm avatar--tint">{u.initials}</span></Tooltip>
+          ))}
+        </span>
+      ),
+    },
+    { key: 'dateCreated', header: 'Date created', fw: 8, cell: (g) => <span className="small">{formatDate(g.dateCreated)}</span> },
+  ];
+
+  const skillColumns = [
+    { key: 'name', header: 'Skill', fw: 10, cell: (s) => <span className="small strong">{s.name}</span> },
+    { key: 'criteria', header: 'Criteria', fw: 12, cell: (s) => <TruncatedText value={s.criteria} className="micro mono subtle" /> },
+    { key: 'description', header: 'Description', fw: 18, cell: (s) => <TruncatedText value={s.description} className="small muted" /> },
+    { key: 'holders', header: 'Users', fw: 6, align: 'right', cell: (s) => <span className="mono small">{users.filter((u) => u.skills.includes(s.name)).length}</span> },
+  ];
 
   return (
     <>
       <PageHeader
         title="Users"
-        subtitle="People, what they can do, and what they are trained on."
+        description="People, what they can do, and what they are trained on — one page rather than three."
         actions={
-          tab === 'management' &&
-          subTab === 'users' && (
-            <Button
-              variant="primary"
-              icon="plus"
-              onClick={() => setEditing({ name: '', email: '', roleId: 'analyst', market: '' })}
-            >
-              Invite user
-            </Button>
-          )
+          tab === 'management' && subTab === 'users' ? <Button variant="primary" icon="plus" onClick={() => setUserModal(true)}>Create user</Button>
+            : tab === 'skills' ? <Button variant="primary" icon="plus" onClick={() => setSkillModal(true)}>Create skill</Button>
+              : null
         }
       />
 
-      <div className="stack">
-        <Card>
-          <CardBody tight>
-            <Tabs
-              tabs={TABS.map((t) => (t.id === 'management' ? { ...t, count: users?.length } : t))}
-              active={tab}
-              onChange={setTab}
-            />
-            {tab === 'management' && (
-              <div style={{ paddingTop: 'var(--s-4)' }}>
-                <SubTabs
-                  tabs={SUB_TABS.map((t) => ({
-                    ...t,
-                    count:
-                      t.id === 'users' ? users?.length : t.id === 'roles' ? roles?.length : groups?.length,
-                  }))}
-                  active={subTab}
-                  onChange={setSubTab}
-                />
-              </div>
-            )}
-          </CardBody>
+      <div className="stack stack--tight">
+        <Card bodyClassName="card__body--flush">
+          <div style={{ padding: '0 var(--s-4)' }}>
+            <Tabs tabs={TABS.map((t) => ({ ...t, badge: t.value === 'management' ? users.length : t.value === 'skills' ? skills.length : undefined }))} value={tab} onChange={setTab} />
+          </div>
+          {tab === 'management' && (
+            <div style={{ padding: 'var(--s-3) var(--s-4) 0' }}>
+              <SubTabs
+                tabs={SUB_TABS.map((t) => ({ ...t, badge: t.value === 'users' ? users.length : t.value === 'roles' ? ROLES.length : GROUPS.length }))}
+                value={subTab}
+                onChange={setSubTab}
+              />
+            </div>
+          )}
         </Card>
 
-        <AsyncBoundary status={status} error={error} onRetry={reloadUsers} skeleton={<SkeletonRows rows={6} />}>
-          {tab === 'management' && subTab === 'users' && users && (
-            <Card>
-              <div className="table-wrap">
-                <table className="tbl">
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Role</th>
-                      <th>Groups</th>
-                      <th>Market</th>
-                      <th style={{ width: 96 }}>Status</th>
-                      <th className="tbl__right">Last active</th>
-                      <th style={{ width: 48 }} />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {users.map((user) => (
-                      <tr key={user.id}>
-                        <td>
-                          <span className="row row--tight">
-                            <span className="avatar avatar--sm">{user.initials}</span>
-                            <span className="stack" style={{ gap: 0 }}>
-                              <span className="small strong">{user.name}</span>
-                              <span className="micro faint">{user.email}</span>
-                            </span>
-                          </span>
-                        </td>
-                        <td className="small">{roleLabel(user.roleId)}</td>
-                        <td className="micro faint">
-                          {user.groupIds.length
-                            ? user.groupIds.map((id) => groups?.find((g) => g.id === id)?.label).filter(Boolean).join(', ')
-                            : '—'}
-                        </td>
-                        <td className="small mono">{user.market}</td>
-                        <td>
-                          <Badge tone={STATUS_TONE[user.status] ?? 'neutral'} dot>
-                            {user.status}
-                          </Badge>
-                        </td>
-                        <td className="tbl__right micro faint nowrap">
-                          {relativeTime(new Date(Date.now() - user.lastActiveHours * 3_600_000).toISOString())}
-                        </td>
-                        <td>
-                          <Button variant="ghost" size="sm" onClick={() => setEditing(user)} aria-label="Edit user">
-                            <Icon name="edit" size={14} />
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          )}
+        {tab === 'management' && (
+          <Card bodyClassName="card__body--flush">
+            {subTab === 'users' && (
+              <>
+                <Toolbar>
+                  <SearchInput value={search} onChange={setSearch} placeholder="Search people…" />
+                  <ExportButtons columns={userColumns.filter((c) => c.key !== 'actions')} rows={filteredUsers} name="users" onCopied={(ok) => notify(ok ? 'Copied.' : 'Clipboard blocked.', ok ? 'success' : 'danger')} />
+                </Toolbar>
+                <DataTable columns={userColumns} rows={filteredUsers} rowKey={(u) => u.id} />
+              </>
+            )}
+            {subTab === 'roles' && <DataTable columns={roleColumns} rows={ROLES} rowKey={(r) => r.id} />}
+            {subTab === 'groups' && <DataTable columns={groupColumns} rows={GROUPS} rowKey={(g) => g.id} />}
+          </Card>
+        )}
 
-          {tab === 'management' && subTab === 'roles' && roles && (
-            <Card>
-              <div className="table-wrap">
-                <table className="tbl">
-                  <thead>
-                    <tr>
-                      <th>Role</th>
-                      <th>Description</th>
-                      <th className="tbl__right">Members</th>
-                      <th style={{ width: 90 }}>Type</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {roles.map((role) => (
-                      <tr key={role.id}>
-                        <td className="small strong">{role.label}</td>
-                        <td className="small muted">{role.description}</td>
-                        <td className="tbl__right mono small">
-                          {users?.filter((u) => u.roleId === role.id).length ?? 0}
-                        </td>
-                        <td>
-                          <Badge tone={role.system ? 'neutral' : 'primary'}>{role.system ? 'System' : 'Custom'}</Badge>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          )}
+        {tab === 'skills' && (
+          <Card bodyClassName="card__body--flush">
+            <DataTable columns={skillColumns} rows={skills} rowKey={(s) => s.id} />
+          </Card>
+        )}
 
-          {tab === 'management' && subTab === 'groups' && groups && (
-            <Card>
-              <div className="table-wrap">
-                <table className="tbl">
-                  <thead>
-                    <tr>
-                      <th>Group</th>
-                      <th>Description</th>
-                      <th className="tbl__right">Members</th>
-                      <th>Who</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {groups.map((group) => (
-                      <tr key={group.id}>
-                        <td className="small strong">{group.label}</td>
-                        <td className="small muted">{group.description}</td>
-                        <td className="tbl__right mono small">{group.memberIds.length}</td>
-                        <td>
-                          <span className="row row--tight">
-                            {group.memberIds.map((id) => (
-                              <span key={id} className="avatar avatar--sm" title={users?.find((u) => u.id === id)?.name}>
-                                {users?.find((u) => u.id === id)?.initials ?? '?'}
-                              </span>
-                            ))}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          )}
-
-          {tab === 'skills' && skills && (
-            <Card>
-              <CardHead title="Skills" subtitle="What each person is certified or trained to handle. Drives skill-match assignment." />
-              <div className="table-wrap">
-                <table className="tbl">
-                  <thead>
-                    <tr>
-                      <th>Skill</th>
-                      <th>Description</th>
-                      <th className="tbl__right">Holders</th>
-                      <th>Who</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {skills.map((skill) => (
-                      <tr key={skill.id}>
-                        <td className="small strong">{skill.label}</td>
-                        <td className="small muted">{skill.description}</td>
-                        <td className="tbl__right mono small">{skill.holders.length}</td>
-                        <td>
-                          <span className="row row--tight">
-                            {skill.holders.map((id) => (
-                              <span key={id} className="avatar avatar--sm" title={users?.find((u) => u.id === id)?.name}>
-                                {users?.find((u) => u.id === id)?.initials ?? '?'}
-                              </span>
-                            ))}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          )}
-
-          {tab === 'permissions' && permissionGroups && roles && (
-            <Card>
-              <CardHead
-                title="Permissions"
-                subtitle="What each role may do. Changes take effect on the next sign-in."
-              />
-              <div className="table-wrap">
-                <table className="tbl">
-                  <thead>
-                    <tr>
-                      <th style={{ minWidth: 260 }}>Permission</th>
-                      {roles.map((role) => (
-                        <th key={role.id} className="tbl__right">
-                          {role.label}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {permissionGroups.map((group) => (
-                      <Fragment key={group.id}>
-                        <tr>
-                          <td colSpan={roles.length + 1} style={{ background: 'var(--c-surface-sunken)' }}>
-                            <span className="eyebrow">{group.label}</span>
-                          </td>
-                        </tr>
-                        {group.permissions.map((permission) => (
-                          <tr key={permission.id}>
-                            <td>
-                              <span className="stack" style={{ gap: 1 }}>
-                                <span className="small">{permission.label}</span>
-                                <span className="micro faint mono">{permission.id}</span>
-                              </span>
-                            </td>
-                            {roles.map((role) => (
-                              <td key={role.id} className="tbl__right">
-                                <input
-                                  type="checkbox"
-                                  className="toggle"
-                                  checked={Boolean(permission.roles[role.id])}
-                                  // The admin role is intentionally not editable:
-                                  // removing your own access is not a feature.
-                                  disabled={role.id === 'admin'}
-                                  onChange={(e) => togglePermission(permission.id, role.id, e.target.checked)}
-                                  aria-label={`${permission.label} for ${role.label}`}
-                                />
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                      </Fragment>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          )}
-        </AsyncBoundary>
+        {tab === 'permissions' && <Permissions />}
       </div>
 
-      <Modal
-        open={Boolean(editing)}
-        onClose={() => setEditing(null)}
-        title={editing?.id ? 'Edit user' : 'Invite user'}
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setEditing(null)} disabled={saving}>
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              onClick={saveUserRecord}
-              disabled={!editing?.name?.trim() || !editing?.email?.trim() || saving}
-            >
-              {saving ? 'Saving…' : editing?.id ? 'Save user' : 'Send invite'}
-            </Button>
-          </>
-        }
-      >
-        {editing && (
-          <div className="stack">
-            <TextInput
-              label="Full name"
-              value={editing.name}
-              onChange={(e) => setEditing({ ...editing, name: e.target.value })}
-            />
-            <TextInput
-              label="Email"
-              type="email"
-              value={editing.email}
-              onChange={(e) => setEditing({ ...editing, email: e.target.value })}
-            />
-            <Select
-              label="Role"
-              value={editing.roleId}
-              onChange={(e) => setEditing({ ...editing, roleId: e.target.value })}
-              options={(roles ?? []).map((r) => ({ value: r.id, label: r.label }))}
-            />
-            <TextInput
-              label="Market"
-              value={editing.market ?? ''}
-              onChange={(e) => setEditing({ ...editing, market: e.target.value })}
-              placeholder="e.g. FR"
-            />
-          </div>
-        )}
-      </Modal>
+      <UserModal
+        open={userModal}
+        onClose={() => setUserModal(false)}
+        onSave={(u) => {
+          setUsers((p) => [...p, {
+            ...u, id: `u${p.length + 1}`, status: 'Active', confirmation: 'Force Change Password',
+            lockStatus: 'Unlocked', startDate: new Date().toISOString().slice(0, 10),
+            initials: u.name.split(' ').slice(0, 2).map((w) => w[0]).join('').toUpperCase(),
+          }]);
+          setUserModal(false);
+          notify(`${u.name} invited.`, 'success');
+        }}
+      />
+
+      <SkillModal
+        open={skillModal}
+        onClose={() => setSkillModal(false)}
+        onSave={(s) => { setSkills((p) => [...p, { ...s, id: `s${p.length + 1}` }]); setSkillModal(false); notify(`Skill “${s.name}” created.`, 'success'); }}
+      />
     </>
   );
 }

@@ -1,204 +1,89 @@
 import { useState } from 'react';
-import PageHeader from '@/components/layout/PageHeader';
-import Card, { CardBody, CardHead } from '@/components/ui/Card';
-import Button from '@/components/ui/Button';
-import Icon from '@/components/ui/Icon';
-import Modal from '@/components/ui/Modal';
-import { Badge } from '@/components/ui/Badge';
-import { Checkbox, TextInput } from '@/components/ui/Field';
-import { AsyncBoundary, EmptyState, SkeletonRows } from '@/components/ui/Feedback';
-import { useAsync } from '@/hooks/useAsync';
+import { PageHeader, Card, Button, IconButton, Badge, EmptyState } from '@/components/ui/Surface';
+import { DataTable } from '@/components/ui/DataTable';
+import { Modal, ConfirmDialog } from '@/components/ui/Modal';
+import { SelectField, TextField } from '@/components/ui/Form';
+import { TruncatedText } from '@/components/ui/Overlay';
+import { WEBHOOKS, WEBHOOK_TOPICS } from '@/data/admin';
 import { useToast } from '@/context/ToastContext';
-import { deleteWebhook, listWebhookTopics, listWebhooks, saveWebhook } from '@/services/system.service';
-import { formatNumber, relativeTime } from '@/utils/format';
-
-const EMPTY = { name: '', url: '', topics: [] };
+import { formatDate } from '@/utils/format';
 
 export function Webhooks() {
   const { notify } = useToast();
-  const { data: webhooks, status, error, run } = useAsync(listWebhooks, []);
-  const { data: topics } = useAsync(listWebhookTopics, []);
+  const [hooks, setHooks] = useState(WEBHOOKS);
+  const [open, setOpen] = useState(false);
+  const [topic, setTopic] = useState('');
+  const [endpoint, setEndpoint] = useState('');
+  const [confirm, setConfirm] = useState(null);
 
-  const [editing, setEditing] = useState(null);
-  const [saving, setSaving] = useState(false);
+  const httpsOk = endpoint.startsWith('https://');
+  const valid = topic && httpsOk;
 
-  const save = async () => {
-    setSaving(true);
-    try {
-      await saveWebhook(editing);
-      notify(editing.id ? 'Webhook updated.' : 'Webhook created.', 'success');
-      setEditing(null);
-      await run();
-    } catch (err) {
-      notify(err.message ?? 'Could not save the webhook.', 'danger');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const remove = async (webhook) => {
-    try {
-      await deleteWebhook(webhook.id);
-      notify(`“${webhook.name}” deleted.`, 'success');
-      await run();
-    } catch (err) {
-      notify(err.message ?? 'Could not delete the webhook.', 'danger');
-    }
-  };
-
-  const validUrl = editing?.url?.startsWith('https://');
+  const columns = [
+    { key: 'topic', header: 'Topic', fw: 10, cell: (r) => <span className="mono small">{r.topic}</span> },
+    { key: 'protocol', header: 'Protocol', fw: 5, cell: () => <Badge tone="neutral">HTTPS</Badge> },
+    { key: 'endpoint', header: 'Endpoint', fw: 18, cell: (r) => <TruncatedText value={r.endpoint} className="mono micro" /> },
+    { key: 'createdBy', header: 'Created by', fw: 9, cell: (r) => <span className="small mono">{r.createdBy}</span> },
+    { key: 'dateCreated', header: 'Date created', fw: 7, cell: (r) => <span className="small">{formatDate(r.dateCreated)}</span> },
+    { key: 'status', header: 'Status', fw: 6, cell: (r) => <Badge tone={r.status === 'Active' ? 'success' : 'muted'} dot>{r.status}</Badge> },
+    { key: 'actions', header: 'Actions', fw: 5, width: '52px', cell: (r) => <IconButton icon="trash" label="Delete webhook" tone="danger" size={13} onClick={() => setConfirm(r)} /> },
+  ];
 
   return (
     <>
       <PageHeader
         title="Webhooks"
-        subtitle="Push case events to your own systems. Deliveries retry with backoff and are recorded per endpoint."
-        actions={
-          <Button variant="primary" icon="plus" onClick={() => setEditing({ ...EMPTY })}>
-            Add webhook
-          </Button>
-        }
+        description="Send case events to your own systems. Deliveries retry with backoff."
+        actions={<Button variant="primary" icon="plus" onClick={() => setOpen(true)}>Create webhook</Button>}
       />
 
-      <AsyncBoundary status={status} error={error} onRetry={run} skeleton={<SkeletonRows rows={4} />}>
-        {webhooks && (
-          <Card>
-            {webhooks.length === 0 ? (
-              <EmptyState
-                icon="link"
-                title="No webhooks configured"
-                body="Register an endpoint to receive case events — new cases, status changes, overdue warnings and consolidation alerts."
-                action={{ label: 'Add webhook', icon: 'plus', onClick: () => setEditing({ ...EMPTY }) }}
-              />
-            ) : (
-              <div className="table-wrap">
-                <table className="tbl">
-                  <thead>
-                    <tr>
-                      <th>Endpoint</th>
-                      <th>Topics</th>
-                      <th style={{ width: 100 }}>Status</th>
-                      <th className="tbl__right">Last delivery</th>
-                      <th className="tbl__right">Failures 24h</th>
-                      <th style={{ width: 96 }} />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {webhooks.map((webhook) => (
-                      <tr key={webhook.id}>
-                        <td>
-                          <span className="stack" style={{ gap: 1 }}>
-                            <span className="small strong">{webhook.name}</span>
-                            <span className="micro faint mono truncate">{webhook.url}</span>
-                          </span>
-                        </td>
-                        <td>
-                          <span className="chip-row">
-                            {webhook.topics.map((topic) => (
-                              <span key={topic} className="chip">
-                                {topic}
-                              </span>
-                            ))}
-                          </span>
-                        </td>
-                        <td>
-                          <span className="row row--tight">
-                            <span className={`status-dot status-dot--${webhook.status}`} />
-                            <span className="small">{webhook.status}</span>
-                          </span>
-                        </td>
-                        <td className="tbl__right micro faint nowrap">
-                          {webhook.lastDeliveryAt ? relativeTime(webhook.lastDeliveryAt) : 'Never'}
-                          {webhook.lastStatus && (
-                            <span className="mono"> · {webhook.lastStatus}</span>
-                          )}
-                        </td>
-                        <td
-                          className="tbl__right mono small"
-                          style={webhook.failures24h ? { color: 'var(--c-danger)' } : undefined}
-                        >
-                          {formatNumber(webhook.failures24h)}
-                        </td>
-                        <td>
-                          <div className="row row--tight row--nowrap">
-                            <Button variant="ghost" size="sm" onClick={() => setEditing(webhook)} aria-label="Edit">
-                              <Icon name="edit" size={14} />
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={() => remove(webhook)} aria-label="Delete">
-                              <Icon name="trash" size={14} />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </Card>
+      <Card bodyClassName="card__body--flush">
+        {hooks.length === 0 ? (
+          <EmptyState
+            icon="webhook"
+            title="No webhooks yet"
+            hint="Create a webhook to receive case events at an endpoint you control — new cases, status changes, overdue warnings and consolidation alerts."
+            action={<Button variant="primary" icon="plus" onClick={() => setOpen(true)}>Create webhook</Button>}
+          />
+        ) : (
+          <DataTable columns={columns} rows={hooks} rowKey={(r) => r.id} />
         )}
-      </AsyncBoundary>
+      </Card>
 
       <Modal
-        open={Boolean(editing)}
-        onClose={() => setEditing(null)}
-        title={editing?.id ? 'Edit webhook' : 'Add webhook'}
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setEditing(null)} disabled={saving}>
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              onClick={save}
-              disabled={!editing?.name?.trim() || !validUrl || !editing?.topics?.length || saving}
-            >
-              {saving ? 'Saving…' : 'Save webhook'}
-            </Button>
-          </>
-        }
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Create webhook"
+        footer={<><Button variant="secondary" onClick={() => setOpen(false)}>Cancel</Button><Button variant="primary" disabled={!valid} onClick={() => { setHooks((p) => [...p, { id: `wh${p.length + 1}`, topic, protocol: 'HTTPS', endpoint, createdBy: 'you', dateCreated: new Date().toISOString().slice(0, 10), status: 'Active' }]); notify('Webhook created.', 'success'); setOpen(false); setTopic(''); setEndpoint(''); }}>Create webhook</Button></>}
       >
-        {editing && (
-          <div className="stack">
-            <TextInput
-              label="Name"
-              value={editing.name}
-              onChange={(e) => setEditing({ ...editing, name: e.target.value })}
-              placeholder="e.g. Ops alerting"
-            />
-            <TextInput
-              label="Endpoint URL"
-              value={editing.url}
-              onChange={(e) => setEditing({ ...editing, url: e.target.value })}
-              placeholder="https://hooks.example.com/disputes"
-              hint="Must be HTTPS."
-              error={editing.url && !validUrl ? 'The endpoint must use HTTPS.' : undefined}
-            />
-
-            <div className="field">
-              <span className="field__label">Topics</span>
-              <div className="stack stack--tight">
-                {(topics ?? []).map((topic) => (
-                  <Checkbox
-                    key={topic.id}
-                    label={topic.label}
-                    description={topic.description}
-                    checked={editing.topics.includes(topic.id)}
-                    onChange={(e) =>
-                      setEditing({
-                        ...editing,
-                        topics: e.target.checked
-                          ? [...editing.topics, topic.id]
-                          : editing.topics.filter((t) => t !== topic.id),
-                      })
-                    }
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
+        <div className="stack">
+          <SelectField
+            label="Topic"
+            required
+            value={topic}
+            onChange={(e) => setTopic(e.target.value)}
+            placeholder="Select an event…"
+            options={WEBHOOK_TOPICS.map((t) => ({ value: t.id, label: t.label }))}
+            hint={topic ? WEBHOOK_TOPICS.find((t) => t.id === topic)?.description : undefined}
+          />
+          <TextField
+            label="Endpoint URL"
+            required
+            value={endpoint}
+            onChange={(e) => setEndpoint(e.target.value)}
+            placeholder="https://hooks.example.com/disputes"
+            error={endpoint && !httpsOk ? 'The endpoint must use HTTPS.' : undefined}
+          />
+        </div>
       </Modal>
+
+      <ConfirmDialog
+        open={Boolean(confirm)}
+        title="Delete webhook"
+        message={<>Stop delivering <strong>{confirm?.topic}</strong> to this endpoint?</>}
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => { setHooks((p) => p.filter((x) => x.id !== confirm.id)); notify('Webhook deleted.', 'success'); setConfirm(null); }}
+      />
     </>
   );
 }

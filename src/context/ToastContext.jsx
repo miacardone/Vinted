@@ -8,43 +8,32 @@ export function ToastProvider({ children }) {
   const timers = useRef(new Map());
 
   const dismiss = useCallback((id) => {
-    setToasts((current) => current.filter((t) => t.id !== id));
+    setToasts((t) => t.filter((x) => x.id !== id));
     const timer = timers.current.get(id);
-    if (timer) {
-      clearTimeout(timer);
-      timers.current.delete(id);
-    }
+    if (timer) { clearTimeout(timer); timers.current.delete(id); }
   }, []);
 
-  const notify = useCallback(
-    (message, tone = 'default', ttl = 4200) => {
-      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-      setToasts((current) => [...current, { id, message, tone }]);
-      timers.current.set(id, setTimeout(() => dismiss(id), ttl));
-      return id;
-    },
-    [dismiss],
-  );
+  const notify = useCallback((message, tone = 'default', ttl = 4000) => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setToasts((t) => [...t, { id, message, tone }]);
+    timers.current.set(id, setTimeout(() => dismiss(id), ttl));
+  }, [dismiss]);
 
-  // Timers outlive the component if a toast is showing at unmount.
   useEffect(() => {
     const pending = timers.current;
-    return () => pending.forEach((timer) => clearTimeout(timer));
+    return () => pending.forEach(clearTimeout);
   }, []);
 
-  const value = useMemo(() => ({ toasts, notify, dismiss }), [toasts, notify, dismiss]);
+  const value = useMemo(() => ({ notify, dismiss }), [notify, dismiss]);
 
   return (
     <ToastContext.Provider value={value}>
       {children}
       <div className="toast-stack" role="status" aria-live="polite">
-        {toasts.map((toast) => (
-          <div key={toast.id} className={`toast toast--${toast.tone}`}>
-            <Icon name={toast.tone === 'danger' ? 'alert' : 'check'} size={16} />
-            <span>{toast.message}</span>
-            <button type="button" className="toast__close" onClick={() => dismiss(toast.id)} aria-label="Dismiss">
-              <Icon name="close" size={14} />
-            </button>
+        {toasts.map((t) => (
+          <div key={t.id} className={`toast toast--${t.tone}`}>
+            <Icon name={t.tone === 'danger' ? 'alert' : 'check'} size={15} />
+            <span>{t.message}</span>
           </div>
         ))}
       </div>
@@ -54,7 +43,7 @@ export function ToastProvider({ children }) {
 
 export function useToast() {
   const ctx = useContext(ToastContext);
-  if (!ctx) throw new Error('useToast must be used inside <ToastProvider>');
+  if (!ctx) throw new Error('useToast must be used inside ToastProvider');
   return ctx;
 }
 

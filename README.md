@@ -1,11 +1,12 @@
 # Dispute Resolution Console
 
-A white-label dispute resolution console. The bundled demo tenant is **Vinted**;
-a second tenant (**PriceLine**) ships in the same codebase to prove the theming
-is real rather than aspirational.
+A white-label dispute resolution console, rebuilt screen-for-screen from the
+DisputeLab platform with Vinted branding and data. A second tenant
+(**PriceLine**) ships in the same codebase and generates a complete dataset, not
+just a recoloured chrome.
 
-Vite + React 18 + React Router 6. **No UI or charting libraries** — every icon
-and every chart is hand-rolled inline SVG.
+Vite + React 18 + React Router 6. **No UI kit, no charting library** — every
+icon and every chart is hand-rolled inline SVG.
 
 ```bash
 npm install
@@ -14,11 +15,11 @@ npm run build        # production build to dist/
 npm run preview      # serve the built output
 ```
 
-**Demo credentials: `PriceLine` / `Changeme123`** (also shown on the sign-in screen).
+**Demo credentials: `PriceLine` / `Changeme123`** — also shown on the sign-in screen.
 
 ---
 
-## The two decisions worth knowing about
+## The three decisions worth knowing about
 
 ### 1. The hybrid data model
 
@@ -27,192 +28,130 @@ Two intake paths land in **one operational queue**, keyed on `caseType`:
 | | `chargeback` | `claim` |
 |---|---|---|
 | Source | Card network | Buyer Protection |
-| Carries | ARN, masked PAN, acquirer case #, BIN, MID, MCC, scheme, reason code (13.1, 13.3, 10.4, 4837, 4853, 4855…), cycle (1st CB / 2nd CB / Pre-Arb / RFI), cardholder | Item, category, buyer, seller, order ID, claim reason |
-| Deadline | Scheme window, minus an internal buffer | Programme window, minus the same buffer |
+| Carries | ARN, masked PAN, acquirer case #, BIN, MID, MCC, scheme, reason code (13.1, 13.3, 13.6, 10.4, 12.5, 4837, 4853, 4834, 4840, 4855, C08…), cycle (1st CB / 2nd CB / Pre-Arb / Retrieval / RFI), cardholder, card type | Item, category, buyer, seller, order ID, claim reason, payment method |
 
-The book is roughly **2:1 chargebacks to claims**.
+Roughly **2:1 chargebacks to claims** across ~1,200 cases.
 
-The payoff: **chargebacks also carry the marketplace context** — item, listing
-price, order, buyer, seller and seller rating. An analyst defending a Visa 13.3
-("not as described") is arguing about a *listing*, so the listing sits on the
-case next to the ARN. Modelling the card leg as an addition to the order, rather
-than as a parallel universe, is what makes that possible.
+Chargebacks **also carry the marketplace context** — item, listing price, order,
+buyer, seller, rating. An analyst defending a 13.3 ("not as described") is
+arguing about a *listing*, so the listing sits on the case beside the ARN.
 
 The cost of one shared queue is a table that would otherwise be half N/A.
-`src/domain/caseTypes.js` solves that: **columns adapt to the active case-type
-filter**. On "All", you get the columns that mean something for both paths plus
-a single Reference column that renders whichever identifier the row actually
-has. Filter to one type and that path's real columns appear.
+`src/domain/caseTypes.js` solves that: **columns adapt to the case-type filter**.
+On the mixed view a single Reference column renders whichever identifier the row
+actually has; filter to one path and that path's real columns appear.
 
-### 2. Consolidation
+### 2. Consolidation, and what actually counts as a double refund
 
-Cases that belong together operationally are grouped and surfaced as a flag in
-Work case. Three rules, configured in `brand.config.js`:
+Three linking rules, configured in `brand.config.js`:
 
 | Rule | Minimum | Window | Filter |
 |---|---|---|---|
-| Same card | 2 cases | 90 days | — |
-| Same order | 2 cases | 120 days | — |
-| Same seller | **3 cases** | **30 days** | **Open only** |
+| Same card | 2 | 90 days | — |
+| Same order | 2 | 120 days | — |
+| Same seller | **3** | **30 days** | **Open only** |
 
-**The thresholds are the whole feature.** Two disputes on one card is already a
-signal. Two against one seller is just a seller with volume — which is why that
-rule needs three, a tight window and an open-only filter. Tuned loosely, this
-flagged 60% of the book, and a flag on two-thirds of the queue tells an analyst
-nothing. The current settings land at **13.3% flagged (16 of 120 cases, 6
-groups)** — measured, not guessed.
+**The thresholds are the feature.** Two disputes on one card is a signal; two
+against one seller is just a seller with volume. Tuned loosely this flagged 60%
+of the book, then 28% — at which point analysts learn to ignore the flag.
+Measured now at **13.2%** (158 of 1,200 cases, 64 groups).
 
-The panel shows what linked the cases, the group size, **total exposure across
-the group**, the linked cases themselves, and a "Work all N together" action.
+**Only a shared ORDER can be refunded twice.** 13 groups span both channels, but
+only **5** carry the danger treatment and the double-refund wording — the ones
+sharing an order. A seller group containing a chargeback and a claim across two
+different orders is two separate losses, and the panel says so rather than
+crying wolf.
 
-**The cross-channel group is the one that matters.** `VIN-70008` and `VIN-70075`
-are the same order disputed as *both* a card chargeback and a Buyer Protection
-claim — €1,243.80 of total exposure on a €621.90 order. Worked separately by two
-analysts in two queues, that order gets refunded twice. Only a system holding
-both intake paths in one book can see it, and the panel escalates to a danger
-treatment and says so in plain language.
+### 3. Special instructions gate behaviour
+
+A blocking instruction disables the matching action tile and explains why on
+hover: a regulatory hold disables Write Off, pre-arbitration disables Split Case,
+a claim disables Representment because there is no card leg. The instruction
+card and the tiles read from one source in `data/work-case.js`, so they cannot
+disagree. The reference rendered the warning beside four permanently-enabled
+buttons, which is theatre.
 
 ---
 
 ## White-label architecture
 
-`src/brand/brand.config.js` is the single control file: palette, wordmark,
-currency, locale, vocabulary, reason codes, entities, queues, due-date offsets,
-consolidation thresholds and feature flags.
+`src/brand/brand.config.js` is the single control file: palette, wordmark, logo
+path, currency, locale, timezone, vocabulary, reason codes, entities, queues,
+due-date offsets, thresholds and feature flags. `BrandProvider` writes the
+palette to CSS custom properties at runtime.
 
-`BrandProvider` writes the palette to CSS custom properties on `:root` at
-runtime. The rule that keeps this honest:
-
-> **No component may hard-code a colour or the word "Vinted".**
-> Colours reach the DOM as `var(--c-*)`. Product nouns reach the JSX through
-> `brand.terms`. If you are about to type a hex code or a tenant name inside
-> `src/components`, it belongs in the brand config instead.
-
-Swap tenants with an environment variable:
+> **No component hard-codes a colour, a brand name, or a tenant value.** Colours
+> reach the DOM as `var(--c-*)`, nouns through `brand.terms`, and the logo as a
+> **path** — never an import.
 
 ```bash
 VITE_TENANT=priceline npm run dev
 ```
 
-Everything changes with no component edits — palette, nav rail, chart series,
-currency (EUR → USD), locale (en-GB → en-US), legal entities, queue labels,
-case-ID prefix (`VIN-70001` → `PRL-44001`), and the vocabulary (a *seller*
-becomes a *supplier*, an *order* becomes a *booking*, *Buyer Protection*
-becomes *Traveller Protection*).
+Tenant leaks found in the reference and converted — every one is the same class
+of bug, a plausible default that only misbehaves under a second tenant:
+
+| Source | Leak |
+|---|---|
+| `lib/format.ts` | `'en-US'` **and** `currency = 'USD'` hard-coded in the formatter |
+| `data/cases.ts` | Priceline merchants, 9 branded queues, `@dlec.com` / `@priceline.com` addresses, `mid: USDPriceline{n}`, `currency:'USD'` |
+| `data/permissions.ts` | Permission list built from the *reference's* navigation — still granting Case Priority, Archived Cases, Unmatched Docs, Criteria Check and Scheduler |
+| `data/rule-builder.ts` | Merchant labels and a travel-only MCC list |
+| `data/work-case.ts` | Route queues, assignable users and skills, `currency='USD'` |
+| `tokens.css` / `chartPalette.ts` | "Priceline navy" and a blue/grey chart rule |
+| `Sidebar` / `AppLayout` | `"DisputeLab"` wordmark, `"Priceline · CB911"` footer, avatar initials |
+| `types/index.ts` | Role names including "Chargeback Analyst" |
+| `lib/auth.tsx` | Demo username, plus a `localStorage` mutation at import time |
 
 ### Chart palette
 
-The categorical series in `brand.config.js` is **validated, not eyeballed**. The
-shipped order passes all five palette checks against a white chart surface —
-lightness band, chroma floor, colour-vision-deficiency separation on every
-adjacent pair, the normal-vision floor, and 3:1 contrast. Two constraints shaped
-it and both are load-bearing:
-
-- The UI teal (`#007782`) and the nav-active teal (`#00A0AD`) **cannot both be
-  series colours** — adjacent, they separate by only ΔE 12.6 to normal vision.
-  The chart teal is a saturated sibling (`#008C99`); the brand reads through the
-  chrome, not through the slices.
-- **Green and amber are never adjacent** — they collapse to ΔE 7.3 under
-  protanopia. The ordering encodes that.
-
-Assign these in fixed order and never cycle them. A seventh category folds into
-"Other" and takes `chartNeutral`.
-
----
-
-## Service layer
-
-**Every read and write goes through `request()` in
-`src/services/apiClient.js`. No component touches `fetch`.**
-
-- `VITE_API_BASE_URL` set → the path is called for real.
-- `VITE_API_BASE_URL` empty → a `fallback` resolver serves the demo book.
-
-That is the entire migration path from demo to production: a config change, not
-a refactor. Demo mutations apply to an in-memory copy of the book, so the UI
-behaves like a real system within a session — change a status and it stays
-changed until reload.
-
-### Endpoints
-
-| Method | Path | Purpose |
-|---|---|---|
-| `GET` | `/cases` | List cases across both intake paths (filters, sort, pagination) |
-| `GET` | `/cases/:caseId` | One case with documents, history and notes |
-| `GET` | `/cases/bench` | The current analyst's bench, due date first |
-| `PATCH` | `/cases/:caseId` | Update status, queue, assignee or flags |
-| `POST` | `/cases/bulk` | Apply one change set to many cases |
-| `POST` | `/cases/:caseId/decision` | Record a resolution |
-| `POST` | `/cases/:caseId/notes` | Add a note |
-| `GET` | `/cases/:caseId/consolidation` | Linked groups for one case |
-| `GET` | `/consolidation` | All groups plus flag-rate stats |
-| `POST` | `/cases/import` | CSV import |
-| `GET` | `/rule-groups` | Rule groups with rule counts |
-| `GET` | `/rule-groups/:groupId/rules` | Rules in a group |
-| `GET` | `/rules` | All rules |
-| `POST` | `/rules` | Create a rule |
-| `PATCH` | `/rules/:ruleId` | Enable, disable or edit |
-| `GET` | `/rules/:ruleId/history` | Rule change history |
-| `POST` | `/rules/:ruleId/check` | Per-criterion pass/fail for one case |
-| `POST` | `/bulk-actions/preview` | Live match count for a criteria set |
-| `GET` `POST` | `/bulk-actions` | Bulk action history |
-| `GET` `POST` `DELETE` | `/queues`, `/queues/:id` | Queue management with live depth |
-| `GET` `POST` `DELETE` | `/assignment-reasons` | Assignment reasons |
-| `GET` | `/uploads`, `/uploads/schema` | Upload history and CSV column spec |
-| `GET` | `/dashboard` | KPIs, activity series, AHT, reason donuts |
-| `GET` | `/reports/summary` | Totals by reason category and due-date bucket |
-| `GET` | `/monitoring` | Document processing, outcomes, error series |
-| `GET` `POST` `DELETE` | `/reports`, `/reports/:id` | Saved and scheduled reports |
-| `POST` | `/reports/preview` | Live report preview |
-| `POST` | `/reports/:id/run` | Run a saved report |
-| `GET` | `/users`, `/roles`, `/groups`, `/skills` | Directory |
-| `GET` `PATCH` | `/permissions`, `/permissions/:id` | Permission matrix |
-| `GET` `PATCH` | `/system/preferences` | Numbering, offsets, thresholds |
-| `GET` `POST` `DELETE` | `/webhooks` | Webhook endpoints |
-| `GET` | `/webhooks/topics` | Available webhook topics |
-| `GET` `POST` | `/account`, `/account/password` | Account and password |
-| `POST` | `/auth/login`, `/auth/logout` | Session |
-
-The API documentation page in the app documents these same endpoints — it
-describes the real contract, not a parallel fiction.
+Validated, not eyeballed. The shipped ramp passes all five palette checks
+against a white surface — lightness band, chroma floor, CVD separation on every
+adjacent pair, the normal-vision floor and 3:1 contrast. Two constraints shaped
+it: the UI teal `#007782` and nav-active `#00A0AD` separate by only ΔE 12.6 and
+so cannot both be series colours (the chart teal is `#008C99`), and green and
+amber are never adjacent because they collapse to ΔE 7.3 under protanopia.
 
 ---
 
 ## Navigation
 
-The information architecture below is the client's edited version of the
-reference product. **The omissions are deliberate** and are documented in
-`src/components/layout/navigation.js`:
+Our edited IA. **The omissions are deliberate** and documented in
+`src/data/navigation.js`:
 
 ```
 Dashboard
-Rules
-  ├ Rule groups
-  ├ Bulk actions
-  └ Rule check            ← renamed from "Criteria check"
-Case admin
-  ├ Assignment reasons
-  ├ Queue management
-  ├ Case management       ← Archived is a TAB here, not a page
-  └ Upload cases          ← no "Case priority" page
+Rules      > Rule groups | Bulk actions | Rule check     ← not "Criteria check"
+Case admin > Assignment reasons | Queue management |
+             Case management | Upload cases             ← no Case priority;
+                                                          Archived is a TAB
 Work case
-Reports
-  ├ Reports center
-  ├ Monitoring
-  └ Custom reports        ← scheduling lives in the builder, no Scheduler page
-Users                     ← ONE page: User management (Users/Roles/Groups
-                             sub-tabs), Skills, Permissions
+Reports    > Reports center | Monitoring | Custom reports ← no Scheduler page
+Users                                                    ← ONE page, tabs
 API documentation
-Settings
-  ├ Account settings
-  ├ Webhooks
-  └ System preferences
+Settings   > Account settings | Webhooks | System preferences
 Help
 ```
 
-There is no "Unmatched docs" section anywhere. Priority is **derived** from due
-date and value (`domain/statuses.js`), which is why there is nothing to
-administer.
+No Unmatched docs section. Priority is derived from due date and value, so there
+is nothing to administer. **The Permissions grid is generated from this
+navigation**, so it can never grant access to a page that does not exist.
+
+---
+
+## Global patterns
+
+- **Tooltips on everything truncated or icon-only**, rendered in a portal at the
+  document root with a high z-index, ~400ms delay, dismissed on scroll. The
+  reference's tooltip was already portalled; its *popovers* were not, and were
+  clipped by the table's overflow container. Everything that floats now goes
+  through `components/ui/Overlay.jsx`.
+- **One data table** for every list: search, Advanced Search, filter popovers
+  with live counts, `Fit to width | Comfortable` density, Column Toggle, Copy /
+  Excel / CSV, sortable headers, expandable rows, and a footer with rows-per-page
+  and `1–10 of N`.
+- **Modals**: title, × close, required fields marked with a red asterisk, inline
+  errors beneath the field, submit disabled until valid.
 
 ---
 
@@ -220,73 +159,57 @@ administer.
 
 ```
 src/
-  brand/        brand.config.js (the control file), BrandProvider, Wordmark
-  domain/       statuses, caseTypes (adaptive columns), consolidation,
-                criteria (the rules engine), metrics
-  data/         seeded RNG + fixtures (cases, rules, users, reports, API, help)
-  services/     apiClient + one service per resource — the only place fetch lives
-  context/      Auth, Toast
-  hooks/        useAsync (with stale-response guard), useSelection
-  components/   ui/ charts/ layout/ cases/ workcase/ rules/
-  pages/        one per route
-  styles/       tokens.css (fallbacks), base.css, components.css
-  utils/        format, constants (routes)
+  brand/       brand.config.js (the control file), BrandProvider, Wordmark
+  domain/      statuses, caseTypes (adaptive columns), criteria engine,
+               consolidation, metrics
+  data/        seeded RNG, catalogue, people, 1200 cases, work-case detail,
+               rules, admin, navigation, permissions, content
+  components/  ui/ charts/ layout/ cases/ workcase/
+  pages/       one per route
+  styles/      tokens (fallbacks), base, components
+  utils/       format, export, storage, rule reordering
 ```
 
-### The demo dataset
-
-`src/data/cases.seed.js` generates ~120 cases from **one fixed seed**, so the
-table, the charts and the consolidation groups are identical on every reload.
-Dates are the deliberate exception: they **anchor to `now()` at module load**,
-so due dates are live rather than a frozen calendar from whenever the seed was
-written. The seed controls the *offsets*, not the dates.
-
-Consolidation groups are planted at fixed indices rather than left to chance —
-see the comment block in that file for why, and why every case starts with a
-distinct seller.
-
-The same criteria engine (`domain/criteria.js`) backs the rule wizard, the live
-match count in Bulk actions, and Rule check. A rule that says it matches 14
-cases matches the same 14 cases everywhere.
+The book is generated from one fixed seed, so tables, charts and consolidation
+groups are identical on every reload — but **dates anchor to `now()`**, so the
+seed controls offsets, not the calendar. Presentment can never post-date today:
+a short window (Amex + RFI computes to a negative window) is floored and the due
+offset clamped.
 
 ---
 
 ## Deployment
 
-`vercel.json` carries two things that matter:
-
-- **The SPA rewrite.** Without it, refreshing on `/work-case/VIN-70123` 404s,
-  because there is no file at that path.
-- **Immutable cache headers** on `/assets/*`, which are content-hashed by Vite.
-
-`.github/workflows/ci.yml` runs `npm ci && npm run build` on every push and PR.
-
-### Environment
-
-```bash
-VITE_API_BASE_URL=      # empty → demo data; set → real API
-VITE_TENANT=vinted      # vinted | priceline
-```
+`vercel.json` carries the SPA rewrite — without it, refreshing on
+`/work-case/VIN-720008` 404s — and immutable cache headers on content-hashed
+assets. CI runs `npm ci && npm run build` on push, pull request and manual
+dispatch, and builds the second tenant too.
 
 ---
 
-## Verification status
+## Verification
 
 Verified:
 
-- `npm run build` passes clean.
-- Both tenants generate a valid book with the correct palette, currency,
-  vocabulary and case-ID prefix.
-- Consolidation flag rate measured at 13.3%, with the cross-channel pair
-  present and carrying the double-refund warning.
-- Every page mounts and renders its **loaded** state (not just a skeleton), and
-  all 41 service functions return valid payloads.
+- `npm run build` passes; both tenants build.
+- Both tenants generate a complete dataset: 1,200 cases, exactly 2:1, **zero
+  presentments post-dating today**, consolidation at **13.2%** in the 10–15 band,
+  entity resolved on every case.
+- All 20 screens plus the work-case detail mount and render their **loaded**
+  state in jsdom with no React errors.
+- Opened in **real Chrome at 1280 and 1440**: 16 routes each, no horizontal
+  overflow, no console errors. Three table-overflow defects were found and fixed
+  this way — long emails bleeding into the next column, the due pill colliding
+  with the actions icons, and case IDs wrapping on their hyphen.
+- Permissions: ungranted rows carry **no toggle** (checked across all three
+  roles — 0 toggles in denied rows), and counts derive from the real list.
 
 Not verified:
 
-- **No automated test suite is committed.** The checks above were run with
-  throwaway harnesses. Vitest + Testing Library is the first thing to add before
-  this carries real traffic.
-- No cross-browser, responsive-breakpoint or screen-reader testing.
-- The live-API path (`VITE_API_BASE_URL` set) has never been exercised against a
-  real backend — only the demo resolver path has run.
+- **No automated test suite is committed.** The checks above ran through
+  throwaway harnesses. Vitest + Testing Library is the first thing to add.
+- No cross-browser testing beyond Chrome, no testing below 1280px, and no
+  screen-reader pass.
+- The Vinted logo could not be downloaded — brandfetch's CDN needs an API key and
+  the only reachable asset was a 32×32 favicon. `public/tenant-*.svg` are
+  authored marks, still referenced by path from the config.

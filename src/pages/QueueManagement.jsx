@@ -1,168 +1,107 @@
-import { useState } from 'react';
-import PageHeader from '@/components/layout/PageHeader';
-import Card, { CardHead } from '@/components/ui/Card';
-import Button from '@/components/ui/Button';
-import Icon from '@/components/ui/Icon';
-import Modal from '@/components/ui/Modal';
-import { Textarea, TextInput } from '@/components/ui/Field';
-import { AsyncBoundary, SkeletonRows } from '@/components/ui/Feedback';
-import { useAsync } from '@/hooks/useAsync';
+import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { PageHeader, Card, Toolbar, Button, IconButton } from '@/components/ui/Surface';
+import { DataTable, ExportButtons } from '@/components/ui/DataTable';
+import { Modal, ConfirmDialog } from '@/components/ui/Modal';
+import { SearchInput, TextAreaField, TextField } from '@/components/ui/Form';
+import { TruncatedText } from '@/components/ui/Overlay';
+import { QUEUE_META } from '@/data/admin';
+import { CASES } from '@/data/cases';
+import { totalsByQueue } from '@/domain/metrics';
 import { useToast } from '@/context/ToastContext';
-import { deleteQueue, listQueues, saveQueue } from '@/services/admin.service';
-import { formatMoney, formatNumber } from '@/utils/format';
+import { ROUTES } from '@/data/navigation';
+import { formatCurrency, formatDate, formatNumber } from '@/utils/format';
 
 export function QueueManagement() {
+  const navigate = useNavigate();
   const { notify } = useToast();
-  const { data, status, error, run } = useAsync(listQueues, []);
 
+  const depths = useMemo(() => totalsByQueue(CASES), []);
+  const [rows, setRows] = useState(QUEUE_META);
+  const [search, setSearch] = useState('');
   const [editing, setEditing] = useState(null);
-  const [saving, setSaving] = useState(false);
+  const [confirm, setConfirm] = useState(null);
 
-  const save = async () => {
-    setSaving(true);
-    try {
-      await saveQueue({ ...editing, sla: Number(editing.sla) || 24 });
-      notify(editing.id ? 'Queue updated.' : 'Queue created.', 'success');
-      setEditing(null);
-      await run();
-    } catch (err) {
-      notify(err.message ?? 'Could not save the queue.', 'danger');
-    } finally {
-      setSaving(false);
-    }
-  };
+  const joined = rows.map((q) => ({ ...q, ...(depths.find((d) => d.id === q.id) ?? { casesInQueue: 0, overdue: 0, value: 0 }) }));
+  const filtered = joined.filter((r) => `${r.label} ${r.description}`.toLowerCase().includes(search.toLowerCase()));
 
-  const remove = async (queue) => {
-    if (queue.depth > 0) {
-      notify(`“${queue.label}” still holds ${formatNumber(queue.depth)} open cases — move them first.`, 'warning');
-      return;
-    }
-    try {
-      await deleteQueue(queue.id);
-      notify(`“${queue.label}” removed.`, 'success');
-      await run();
-    } catch (err) {
-      notify(err.message ?? 'Could not remove the queue.', 'danger');
-    }
-  };
-
-  const maxDepth = Math.max(1, ...(data ?? []).map((q) => q.depth));
+  const columns = [
+    { key: 'label', header: 'Queue name', fw: 12, cell: (r) => <span className="small strong">{r.label}</span> },
+    { key: 'description', header: 'Description', fw: 18, cell: (r) => <TruncatedText value={r.description} className="small muted" /> },
+    {
+      key: 'casesInQueue', header: 'Cases in queue', fw: 8, align: 'right',
+      // A link, because the obvious next question is "which cases?"
+      cell: (r) => (
+        <button
+          type="button"
+          className="mono small"
+          style={{ border: 0, background: 'transparent', color: 'var(--c-primary)', cursor: 'pointer', fontWeight: 600 }}
+          onClick={() => navigate(`${ROUTES.caseManagement}?queue=${r.id}`)}
+        >
+          {formatNumber(r.casesInQueue)}
+        </button>
+      ),
+    },
+    { key: 'overdue', header: 'Overdue', fw: 6, align: 'right', cell: (r) => <span className="mono small" style={r.overdue ? { color: 'var(--c-danger)' } : undefined}>{formatNumber(r.overdue)}</span> },
+    { key: 'value', header: 'Exposure', fw: 8, align: 'right', cell: (r) => <span className="mono small">{formatCurrency(r.value)}</span> },
+    { key: 'sla', header: 'SLA', fw: 5, align: 'right', cell: (r) => <span className="mono small">{r.sla}h</span> },
+    { key: 'createdBy', header: 'Created by', fw: 10, cell: (r) => <span className="small mono">{r.createdBy}</span> },
+    { key: 'dateCreated', header: 'Date created', fw: 8, cell: (r) => <span className="small">{formatDate(r.dateCreated)}</span> },
+    {
+      key: 'actions', header: 'Actions', fw: 6, width: '76px',
+      cell: (r) => (
+        <div className="row row--xtight row--nowrap">
+          <IconButton icon="edit" label="Edit queue" size={13} onClick={() => setEditing(r)} />
+          <IconButton icon="trash" label="Delete queue" tone="danger" size={13} onClick={() => setConfirm(r)} />
+        </div>
+      ),
+    },
+  ];
 
   return (
     <>
       <PageHeader
         title="Queue management"
-        subtitle="Queues, their service targets, and how much work is sitting in each right now."
-        actions={
-          <Button variant="primary" icon="plus" onClick={() => setEditing({ label: '', description: '', sla: 48 })}>
-            Add queue
-          </Button>
-        }
+        description="Queues, their service targets, and how much work is sitting in each right now."
+        actions={<Button variant="primary" icon="plus" onClick={() => setEditing({ label: '', description: '', sla: 48 })}>Add queue</Button>}
       />
 
-      <Card>
-        <CardHead title="Queues" subtitle={data ? `${data.length} configured` : undefined} />
-
-        <AsyncBoundary status={status} error={error} onRetry={run} skeleton={<SkeletonRows rows={6} />}>
-          {data && (
-            <div className="table-wrap">
-              <table className="tbl">
-                <thead>
-                  <tr>
-                    <th>Queue</th>
-                    <th style={{ width: 200 }}>Depth</th>
-                    <th className="tbl__right">Overdue</th>
-                    <th className="tbl__right">Exposure</th>
-                    <th className="tbl__right">SLA</th>
-                    <th style={{ width: 96 }} />
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.map((queue) => (
-                    <tr key={queue.id}>
-                      <td>
-                        <span className="stack" style={{ gap: 1 }}>
-                          <span className="strong small">{queue.label}</span>
-                          <span className="micro faint">{queue.description}</span>
-                        </span>
-                      </td>
-                      <td>
-                        <div className="row row--tight row--nowrap">
-                          <div className="meter" style={{ flex: 1 }}>
-                            <div
-                              className="meter__fill"
-                              style={{ width: `${(queue.depth / maxDepth) * 100}%` }}
-                            />
-                          </div>
-                          <span className="mono small" style={{ width: 28, textAlign: 'right' }}>
-                            {formatNumber(queue.depth)}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="tbl__right mono small" style={queue.overdue ? { color: 'var(--c-danger)' } : undefined}>
-                        {formatNumber(queue.overdue)}
-                      </td>
-                      <td className="tbl__right mono small">{formatMoney(queue.value)}</td>
-                      <td className="tbl__right mono small">{queue.sla}h</td>
-                      <td>
-                        <div className="row row--tight row--nowrap">
-                          <Button variant="ghost" size="sm" onClick={() => setEditing(queue)} aria-label="Edit">
-                            <Icon name="edit" size={14} />
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => remove(queue)} aria-label="Remove">
-                            <Icon name="trash" size={14} />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </AsyncBoundary>
+      <Card bodyClassName="card__body--flush">
+        <Toolbar>
+          <SearchInput value={search} onChange={setSearch} placeholder="Search queues…" />
+          <ExportButtons columns={columns.filter((c) => c.key !== 'actions')} rows={filtered} name="queues" onCopied={(ok) => notify(ok ? 'Copied.' : 'Clipboard blocked.', ok ? 'success' : 'danger')} />
+        </Toolbar>
+        <DataTable columns={columns} rows={filtered} rowKey={(r) => r.id} />
       </Card>
 
       <Modal
         open={Boolean(editing)}
         onClose={() => setEditing(null)}
         title={editing?.id ? 'Edit queue' : 'Add queue'}
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setEditing(null)} disabled={saving}>
-              Cancel
-            </Button>
-            <Button variant="primary" onClick={save} disabled={!editing?.label?.trim() || saving}>
-              {saving ? 'Saving…' : 'Save queue'}
-            </Button>
-          </>
-        }
+        footer={<><Button variant="secondary" onClick={() => setEditing(null)}>Cancel</Button><Button variant="primary" disabled={!editing?.label?.trim()} onClick={() => { setRows((p) => (p.some((x) => x.id === editing.id) ? p.map((x) => (x.id === editing.id ? editing : x)) : [...p, { ...editing, id: `q${p.length + 1}`, createdBy: 'you', dateCreated: new Date().toISOString().slice(0, 10) }])); notify('Queue saved.', 'success'); setEditing(null); }}>Save queue</Button></>}
       >
         {editing && (
           <div className="stack">
-            <TextInput
-              label="Queue name"
-              value={editing.label}
-              onChange={(e) => setEditing({ ...editing, label: e.target.value })}
-              placeholder="e.g. Counterfeit and IP"
-            />
-            <Textarea
-              label="Description"
-              value={editing.description ?? ''}
-              onChange={(e) => setEditing({ ...editing, description: e.target.value })}
-              rows={2}
-            />
-            <TextInput
-              label="Service target (hours)"
-              type="number"
-              min="1"
-              value={editing.sla ?? ''}
-              onChange={(e) => setEditing({ ...editing, sla: e.target.value })}
-              hint="How long a case may sit in this queue before it is late."
-            />
+            <TextField label="Queue name" required value={editing.label} onChange={(e) => setEditing({ ...editing, label: e.target.value })} />
+            <TextAreaField label="Description" rows={2} value={editing.description ?? ''} onChange={(e) => setEditing({ ...editing, description: e.target.value })} />
+            <TextField label="Service target (hours)" type="number" min="1" value={editing.sla ?? ''} onChange={(e) => setEditing({ ...editing, sla: Number(e.target.value) })} hint="How long a case may sit here before it is late." />
           </div>
         )}
       </Modal>
+
+      <ConfirmDialog
+        open={Boolean(confirm)}
+        title="Delete queue"
+        message={confirm?.casesInQueue > 0
+          ? <>“{confirm.label}” still holds <strong>{formatNumber(confirm.casesInQueue)}</strong> open cases. Move them before deleting.</>
+          : <>Delete <strong>{confirm?.label}</strong>?</>}
+        confirmLabel={confirm?.casesInQueue > 0 ? 'Cannot delete' : 'Delete'}
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => {
+          if (confirm.casesInQueue > 0) { notify('Move the cases out of that queue first.', 'warning'); setConfirm(null); return; }
+          setRows((p) => p.filter((x) => x.id !== confirm.id)); notify('Queue deleted.', 'success'); setConfirm(null);
+        }}
+      />
     </>
   );
 }

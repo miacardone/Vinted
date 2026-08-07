@@ -6,7 +6,11 @@
       "request": "launch",
       "name": "Debug console (Vite)",
       "url": "http://localhost:5173",
-      "webRoot": "${workspaceFolder}/src"
+      "webRoot": "${workspaceFolder}/src",
+      "sourceMapPathOverrides": {
+        "webpack:///./src/*": "${webRoot}/*",
+        "/@fs/*": "*"
+      }
     }
   ]
 }

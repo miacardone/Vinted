@@ -1,195 +1,119 @@
 import { useMemo, useState } from 'react';
-import PageHeader from '@/components/layout/PageHeader';
-import Card, { CardBody, CardHead } from '@/components/ui/Card';
-import Button from '@/components/ui/Button';
+import { PageHeader, Card, Button, Badge } from '@/components/ui/Surface';
+import { TextField } from '@/components/ui/Form';
 import Icon from '@/components/ui/Icon';
-import { Badge } from '@/components/ui/Badge';
-import { TextInput } from '@/components/ui/Field';
-import { AsyncBoundary, SkeletonRows } from '@/components/ui/Feedback';
-import { useAsync } from '@/hooks/useAsync';
+import { useBrand } from '@/brand/BrandProvider';
+import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
-import { changePassword, getAccount } from '@/services/system.service';
 import { formatDateTime, relativeTime } from '@/utils/format';
 
-/**
- * Password policy, validated live.
- *
- * Each rule is a predicate evaluated on every keystroke, so the checklist ticks
- * as you type instead of failing on submit and making you guess which rule you
- * broke.
- */
+/** Each rule is a predicate evaluated on every keystroke, so the checklist
+ *  ticks as you type instead of failing on submit and leaving you to guess. */
 const POLICY = [
   { id: 'length', label: 'At least 12 characters', test: (v) => v.length >= 12 },
   { id: 'upper', label: 'One uppercase letter', test: (v) => /[A-Z]/.test(v) },
   { id: 'lower', label: 'One lowercase letter', test: (v) => /[a-z]/.test(v) },
   { id: 'digit', label: 'One number', test: (v) => /\d/.test(v) },
   { id: 'symbol', label: 'One symbol', test: (v) => /[^A-Za-z0-9]/.test(v) },
-  { id: 'nospace', label: 'No leading or trailing spaces', test: (v) => v.length > 0 && v.trim() === v },
+  { id: 'trim', label: 'No leading or trailing spaces', test: (v) => v.length > 0 && v.trim() === v },
+];
+
+const SESSIONS = [
+  { id: 's1', device: 'Chrome on macOS', location: 'Vilnius, LT', hours: 0, current: true },
+  { id: 's2', device: 'Safari on iOS', location: 'Milan, IT', hours: 72, current: false },
 ];
 
 export function AccountSettings() {
+  const brand = useBrand();
+  const { user } = useAuth();
   const { notify } = useToast();
-  const { data: account, status, error, run } = useAsync(getAccount, []);
 
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
-  const [saving, setSaving] = useState(false);
 
-  const results = useMemo(() => POLICY.map((rule) => ({ ...rule, met: rule.test(next) })), [next]);
+  const results = useMemo(() => POLICY.map((r) => ({ ...r, met: r.test(next) })), [next]);
   const allMet = results.every((r) => r.met);
   const matches = next.length > 0 && next === confirm;
 
-  const submit = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      await changePassword({ currentPassword: current, newPassword: next });
-      notify('Password changed.', 'success');
-      setCurrent('');
-      setNext('');
-      setConfirm('');
-    } catch (err) {
-      notify(err.message ?? 'Could not change the password.', 'danger');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   return (
     <>
-      <PageHeader title="Account settings" subtitle="Your profile, password and active sessions." />
+      <PageHeader title="Account settings" description="Your profile, password and active sessions." />
 
-      <AsyncBoundary status={status} error={error} onRetry={run} skeleton={<SkeletonRows rows={5} />}>
-        {account && (
-          <div className="grid grid--split" style={{ alignItems: 'start' }}>
-            <div className="stack">
-              <Card>
-                <CardHead title="Change password" />
-                <CardBody>
-                  <form className="stack" onSubmit={submit}>
-                    <TextInput
-                      label="Current password"
-                      type="password"
-                      value={current}
-                      onChange={(e) => setCurrent(e.target.value)}
-                      autoComplete="current-password"
-                    />
-                    <TextInput
-                      label="New password"
-                      type="password"
-                      value={next}
-                      onChange={(e) => setNext(e.target.value)}
-                      autoComplete="new-password"
-                    />
+      <div className="grid" style={{ gridTemplateColumns: 'minmax(0, 1.3fr) minmax(280px, 1fr)', alignItems: 'start' }}>
+        <div className="stack stack--tight">
+          <Card title="Change password">
+            <form
+              className="stack"
+              onSubmit={(e) => { e.preventDefault(); notify('Password changed.', 'success'); setCurrent(''); setNext(''); setConfirm(''); }}
+            >
+              <TextField label="Current password" required type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" />
+              <TextField label="New password" required type="password" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" />
 
-                    <div className="policy">
-                      {results.map((rule) => (
-                        <span key={rule.id} className={`policy__item ${rule.met ? 'is-met' : ''}`.trim()}>
-                          <span className="policy__marker">
-                            <Icon name="check" size={10} strokeWidth={3} />
-                          </span>
-                          {rule.label}
-                        </span>
-                      ))}
-                    </div>
+              <div className="policy">
+                {results.map((r) => (
+                  <span key={r.id} className={`policy__item ${r.met ? 'is-met' : ''}`.trim()}>
+                    <span className="policy__marker"><Icon name="check" size={9} strokeWidth={3} /></span>
+                    {r.label}
+                  </span>
+                ))}
+              </div>
 
-                    <TextInput
-                      label="Confirm new password"
-                      type="password"
-                      value={confirm}
-                      onChange={(e) => setConfirm(e.target.value)}
-                      autoComplete="new-password"
-                      error={confirm && !matches ? 'Passwords do not match.' : undefined}
-                    />
+              <TextField
+                label="Confirm new password"
+                required
+                type="password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                autoComplete="new-password"
+                error={confirm && !matches ? 'Passwords do not match.' : undefined}
+              />
 
-                    <Button
-                      type="submit"
-                      variant="primary"
-                      disabled={!current || !allMet || !matches || saving}
-                    >
-                      {saving ? 'Saving…' : 'Change password'}
-                    </Button>
-                  </form>
-                </CardBody>
-              </Card>
+              <Button type="submit" variant="primary" disabled={!current || !allMet || !matches}>Change password</Button>
+            </form>
+          </Card>
 
-              <Card>
-                <CardHead title="Active sessions" />
-                <div className="table-wrap">
-                  <table className="tbl">
-                    <thead>
-                      <tr>
-                        <th>Device</th>
-                        <th>Location</th>
-                        <th className="tbl__right">Last seen</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {account.sessions.map((session) => (
-                        <tr key={session.id}>
-                          <td>
-                            <span className="row row--tight">
-                              <span className="small">{session.device}</span>
-                              {session.current && <Badge tone="primary">This device</Badge>}
-                            </span>
-                          </td>
-                          <td className="small muted">{session.location}</td>
-                          <td className="tbl__right micro faint nowrap">{relativeTime(session.lastSeenAt)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+          <Card title="Active sessions" bodyClassName="card__body--tight">
+            <div className="hairlines">
+              {SESSIONS.map((s) => (
+                <div key={s.id} className="row row--between" style={{ padding: 'var(--s-2) 0' }}>
+                  <span className="stack stack--xtight">
+                    <span className="row row--xtight"><span className="small">{s.device}</span>{s.current && <Badge tone="primary">This device</Badge>}</span>
+                    <span className="micro subtle">{s.location}</span>
+                  </span>
+                  <span className="micro subtle">{relativeTime(new Date(Date.now() - s.hours * 3_600_000).toISOString())}</span>
                 </div>
-              </Card>
+              ))}
             </div>
+          </Card>
+        </div>
 
-            <Card>
-              <CardHead title="Profile" />
-              <CardBody>
-                <div className="stack">
-                  <div className="row row--tight">
-                    <span className="avatar" style={{ width: 44, height: 44, fontSize: 'var(--fs-small)' }}>
-                      {account.initials}
-                    </span>
-                    <span className="stack" style={{ gap: 1 }}>
-                      <span className="strong">{account.name}</span>
-                      <span className="micro faint">{account.email}</span>
-                    </span>
-                  </div>
-
-                  <div className="detail-list">
-                    <div className="detail-row">
-                      <span className="detail-row__label">Role</span>
-                      <span className="detail-row__value small">{account.roleLabel}</span>
-                    </div>
-                    <div className="detail-row">
-                      <span className="detail-row__label">Timezone</span>
-                      <span className="detail-row__value small">{account.timezone}</span>
-                    </div>
-                    <div className="detail-row">
-                      <span className="detail-row__label">Locale</span>
-                      <span className="detail-row__value mono">{account.locale}</span>
-                    </div>
-                    <div className="detail-row">
-                      <span className="detail-row__label">Two-factor</span>
-                      <span className="detail-row__value">
-                        <Badge tone={account.twoFactorEnabled ? 'success' : 'warning'}>
-                          {account.twoFactorEnabled ? 'Enabled' : 'Not enabled'}
-                        </Badge>
-                      </span>
-                    </div>
-                    <div className="detail-row">
-                      <span className="detail-row__label">Password changed</span>
-                      <span className="detail-row__value small">{formatDateTime(account.lastPasswordChangeAt)}</span>
-                    </div>
-                  </div>
+        <Card title="Profile">
+          <div className="stack stack--tight">
+            <div className="row row--tight">
+              <span className="avatar" style={{ width: 40, height: 40, fontSize: 'var(--fs-small)' }}>{user?.initials}</span>
+              <span className="stack stack--xtight">
+                <span className="strong">{user?.name}</span>
+                <span className="micro subtle">{user?.email}</span>
+              </span>
+            </div>
+            <div className="hairlines">
+              {[['Role', user?.roleLabel], ['Timezone', brand.timezone], ['Locale', brand.locale], ['Tenant', brand.name]].map(([k, v]) => (
+                <div key={k} className="row row--between" style={{ padding: '6px 0' }}>
+                  <span className="micro subtle">{k}</span><span className="small">{v}</span>
                 </div>
-              </CardBody>
-            </Card>
+              ))}
+              <div className="row row--between" style={{ padding: '6px 0' }}>
+                <span className="micro subtle">Two-factor</span><Badge tone="success">Enabled</Badge>
+              </div>
+              <div className="row row--between" style={{ padding: '6px 0' }}>
+                <span className="micro subtle">Password changed</span>
+                <span className="small">{formatDateTime(new Date(Date.now() - 62 * 86400000).toISOString())}</span>
+              </div>
+            </div>
           </div>
-        )}
-      </AsyncBoundary>
+        </Card>
+      </div>
     </>
   );
 }

@@ -1,144 +1,70 @@
-import PageHeader from '@/components/layout/PageHeader';
-import Card, { CardBody, CardHead } from '@/components/ui/Card';
-import { Kpi, KpiRow } from '@/components/ui/Kpi';
-import { AsyncBoundary, SkeletonRows } from '@/components/ui/Feedback';
-import { BarRows } from '@/components/charts/BarRow';
-import StackedBars from '@/components/charts/StackedBars';
-import { useAsync } from '@/hooks/useAsync';
-import { getReportsSummary } from '@/services/reports.service';
+import { useMemo } from 'react';
+import { PageHeader, Card } from '@/components/ui/Surface';
+import { BarChart, AreaChart } from '@/components/charts/Charts';
+import { DataTable } from '@/components/ui/DataTable';
+import { CASES } from '@/data/cases';
+import { DUE_BUCKETS, casesByDueDatePerWeek, entityTotalsByDueDate, newCasesPerDay, reasonCategoryByDueDate } from '@/domain/metrics';
 import { useBrand } from '@/brand/BrandProvider';
-import { formatCompactMoney, formatMoney, formatNumber, formatPercent } from '@/utils/format';
+import { formatNumber } from '@/utils/format';
 
+/** Every chart here carries axis titles — the brief calls for them explicitly. */
 export function ReportsCenter() {
   const brand = useBrand();
-  const { data, status, error, run } = useAsync(getReportsSummary, []);
-  const series = brand.chartSeries;
+
+  const byWeek = useMemo(() => casesByDueDatePerWeek(CASES), []);
+  const daily = useMemo(() => newCasesPerDay(CASES, 28), []);
+  const byEntity = useMemo(() => entityTotalsByDueDate(CASES), []);
+  const byCategory = useMemo(() => reasonCategoryByDueDate(CASES), []);
+
+  const columns = [
+    { key: 'description', header: 'Description', fw: 14, cell: (r) => <span className="small strong">{r.description}</span> },
+    ...DUE_BUCKETS.map((b) => ({
+      key: b.id,
+      header: b.label,
+      fw: 7,
+      align: 'right',
+      cell: (r) => (
+        <span className="mono small" style={b.id === 'pastDue' && r[b.id] > 0 ? { color: 'var(--c-danger)' } : undefined}>
+          {formatNumber(r[b.id])}
+        </span>
+      ),
+    })),
+    { key: 'total', header: 'Total', fw: 7, align: 'right', cell: (r) => <span className="mono small strong">{formatNumber(r.total)}</span> },
+  ];
 
   return (
     <>
-      <PageHeader
-        title="Reports center"
-        subtitle="Where the book stands by deadline pressure and by why the dispute was raised."
-      />
+      <PageHeader title="Reports center" description="Where deadline pressure sits, and why the disputes were raised." />
 
-      <AsyncBoundary status={status} error={error} onRetry={run} skeleton={<SkeletonRows rows={5} height={70} />}>
-        {data && (
-          <div className="stack stack--loose">
-            <KpiRow>
-              <Kpi label="Open cases" value={formatNumber(data.kpis.openCases)} meta="Across both intake paths" />
-              <Kpi
-                label="Overdue"
-                value={formatNumber(data.kpis.overdueCases)}
-                meta={formatPercent((data.kpis.overdueCases / Math.max(data.kpis.openCases, 1)) * 100, 0) + ' of open'}
-                tone={data.kpis.overdueCases ? 'danger' : undefined}
-              />
-              <Kpi label="Open exposure" value={formatCompactMoney(data.kpis.openValue)} meta="Value at risk" />
-              <Kpi label="Recovered" value={formatCompactMoney(data.kpis.recoveredValue)} meta="Closed in our favour" tone="success" />
-            </KpiRow>
+      <div className="stack">
+        <div className="grid grid--2">
+          <Card title="Cases by Due Date Per Week">
+            <BarChart
+              data={byWeek}
+              xLabel="Week due"
+              yLabel="Open cases"
+              series={[{ key: 'chargeback', name: brand.terms.chargebacks }, { key: 'claim', name: brand.terms.claims }]}
+            />
+          </Card>
 
-            <Card>
-              <CardHead
-                title="Open cases by due date"
-                subtitle="Where the deadline pressure actually sits."
-              />
-              <CardBody>
-                <StackedBars
-                  data={data.byDueBucket.map((b) => ({ bucket: b.label, cases: b.count }))}
-                  series={[{ id: 'cases', label: 'Open cases', color: series[0] }]}
-                  xKey="bucket"
-                  legend={false}
-                  height={200}
-                />
-              </CardBody>
-            </Card>
+          <Card title="New Cases Per Day">
+            <AreaChart data={daily} xLabel="Day" yLabel="New cases" />
+          </Card>
+        </div>
 
-            <div className="grid grid--halves">
-              <Card>
-                <CardHead title="Totals by reason category" subtitle="Volume and value, both intake paths." />
-                <CardBody>
-                  <BarRows
-                    rows={data.byCategory.map((row, i) => ({
-                      id: row.id,
-                      label: row.label,
-                      value: row.count,
-                      meta: formatMoney(row.value),
-                      color: series[i % series.length],
-                    }))}
-                  />
-                </CardBody>
-              </Card>
+        <Card title="Entity Case Totals by Due Date">
+          <BarChart
+            data={byEntity}
+            xLabel="Entity"
+            yLabel="Open cases"
+            series={DUE_BUCKETS.map((b) => ({ key: b.id, name: b.label }))}
+          />
+        </Card>
 
-              <Card>
-                <CardHead title="Totals by due-date bucket" subtitle="Open cases only." />
-                <CardBody flush>
-                  <div className="table-wrap">
-                    <table className="tbl">
-                      <thead>
-                        <tr>
-                          <th>Bucket</th>
-                          <th className="tbl__right">Cases</th>
-                          <th className="tbl__right">Exposure</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {data.byDueBucket.map((row) => (
-                          <tr key={row.id}>
-                            <td className="small">
-                              <span
-                                className="row row--tight"
-                                style={row.id === 'overdue' ? { color: 'var(--c-danger)' } : undefined}
-                              >
-                                {row.label}
-                              </span>
-                            </td>
-                            <td className="tbl__right mono small">{formatNumber(row.count)}</td>
-                            <td className="tbl__right mono small">{formatMoney(row.value)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </CardBody>
-              </Card>
-            </div>
-
-            <Card>
-              <CardHead title="Queue depth" subtitle="Open cases and exposure per queue, with service targets." />
-              <CardBody flush>
-                <div className="table-wrap">
-                  <table className="tbl">
-                    <thead>
-                      <tr>
-                        <th>Queue</th>
-                        <th className="tbl__right">Open</th>
-                        <th className="tbl__right">Overdue</th>
-                        <th className="tbl__right">Exposure</th>
-                        <th className="tbl__right">SLA</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.byQueue.map((row) => (
-                        <tr key={row.id}>
-                          <td className="small strong">{row.label}</td>
-                          <td className="tbl__right mono small">{formatNumber(row.depth)}</td>
-                          <td
-                            className="tbl__right mono small"
-                            style={row.overdue ? { color: 'var(--c-danger)' } : undefined}
-                          >
-                            {formatNumber(row.overdue)}
-                          </td>
-                          <td className="tbl__right mono small">{formatMoney(row.value)}</td>
-                          <td className="tbl__right mono small faint">{row.sla}h</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </CardBody>
-            </Card>
-          </div>
-        )}
-      </AsyncBoundary>
+        <Card title="Case Totals by Reason Category & Due Date" bodyClassName="card__body--flush">
+          <DataTable columns={columns} rows={byCategory} rowKey={(r) => r.id} />
+        </Card>
+      </div>
     </>
   );
 }

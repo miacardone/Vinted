@@ -1,14 +1,12 @@
 /**
  * Deterministic pseudo-random source.
  *
- * The demo dataset has to be identical on every reload — a table that reorders
- * itself between screenshots is useless in a sales demo, and consolidation
- * groups that reshuffle would make the flag meaningless. So every value is
- * drawn from a mulberry32 stream seeded with one fixed number.
+ * The reference used `i % n` cycling, which is deterministic but visibly
+ * patterned — its status column repeated every four rows. A seeded PRNG gives
+ * the same reproducibility without the periodicity.
  *
  * Dates are the deliberate exception: they anchor to now() at module load, so
- * due dates are live rather than a frozen calendar from whenever the seed was
- * written. See cases.seed.js.
+ * the seed controls the OFFSETS, not the calendar. See cases.js.
  */
 
 /** mulberry32 — small, fast, good enough distribution for fixture data. */
@@ -23,18 +21,17 @@ export function createRng(seed = 1) {
   };
 }
 
-/** Wraps a raw stream in the drawing helpers the generators actually use. */
 export function createDraw(seed) {
   const rng = createRng(seed);
 
   const float = (min = 0, max = 1) => min + rng() * (max - min);
   const int = (min, max) => Math.floor(float(min, max + 1));
   const pick = (list) => list[Math.floor(rng() * list.length)];
-  const bool = (probability = 0.5) => rng() < probability;
+  const bool = (p = 0.5) => rng() < p;
 
   /** @param {Array<[value, weight]>} pairs */
   const weighted = (pairs) => {
-    const total = pairs.reduce((sum, [, w]) => sum + w, 0);
+    const total = pairs.reduce((s, [, w]) => s + w, 0);
     let roll = rng() * total;
     for (const [value, weight] of pairs) {
       roll -= weight;
@@ -61,11 +58,8 @@ export function createDraw(seed) {
     return out;
   };
 
-  /** Two decimal places, the way money actually lands. */
   const money = (min, max) => Math.round(float(min, max) * 100) / 100;
-
-  const digits = (length) =>
-    Array.from({ length }, () => String(Math.floor(rng() * 10))).join('');
+  const digits = (length) => Array.from({ length }, () => String(Math.floor(rng() * 10))).join('');
 
   return { rng, float, int, pick, bool, weighted, sample, shuffle, money, digits };
 }

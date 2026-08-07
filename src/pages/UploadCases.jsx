@@ -1,173 +1,122 @@
 import { useRef, useState } from 'react';
-import PageHeader from '@/components/layout/PageHeader';
-import Card, { CardBody, CardHead } from '@/components/ui/Card';
-import Button from '@/components/ui/Button';
+import { PageHeader, Card, Button, Badge } from '@/components/ui/Surface';
+import { DataTable } from '@/components/ui/DataTable';
+import { TruncatedText } from '@/components/ui/Overlay';
 import Icon from '@/components/ui/Icon';
-import { Badge } from '@/components/ui/Badge';
-import { AsyncBoundary, SkeletonRows } from '@/components/ui/Feedback';
-import { useAsync } from '@/hooks/useAsync';
+import brand from '@/brand/brand.config';
+import { UPLOAD_HISTORY, buildUploadSchema } from '@/data/admin';
 import { useToast } from '@/context/ToastContext';
-import { getUploadSchema, listUploads, uploadCases } from '@/services/admin.service';
 import { formatDateTime, formatNumber } from '@/utils/format';
-
-const STATUS_TONE = { completed: 'success', failed: 'danger', processing: 'warning' };
 
 export function UploadCases() {
   const { notify } = useToast();
   const inputRef = useRef(null);
+
+  const [uploads, setUploads] = useState(UPLOAD_HISTORY);
   const [dragging, setDragging] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [busy, setBusy] = useState(false);
 
-  const { data: uploads, status, error, run } = useAsync(listUploads, []);
-  const { data: schema } = useAsync(getUploadSchema, []);
+  const schema = buildUploadSchema(brand);
 
-  const handleFile = async (file) => {
+  const handle = (file) => {
     if (!file) return;
     if (!file.name.toLowerCase().endsWith('.csv')) {
       notify('Only CSV files can be imported.', 'danger');
       return;
     }
 
-    setUploading(true);
-    try {
-      const result = await uploadCases(file);
-      notify(
-        result.rejected
-          ? `${formatNumber(result.accepted)} rows imported, ${formatNumber(result.rejected)} rejected.`
-          : `${formatNumber(result.accepted)} rows imported.`,
-        result.rejected ? 'warning' : 'success',
-      );
-      await run();
-    } catch (err) {
-      notify(err.message ?? 'Upload failed.', 'danger');
-    } finally {
-      setUploading(false);
-    }
+    setBusy(true);
+    setTimeout(() => {
+      const rows = 20 + (file.name.length * 4);
+      const rejected = file.name.includes('prearb') ? 2 : 0;
+      const record = {
+        id: `up${uploads.length + 15}`,
+        filename: file.name,
+        uploadedAt: new Date().toISOString(),
+        uploadedBy: 'you',
+        rows,
+        accepted: rows - rejected,
+        rejected,
+        status: rejected ? 'Completed' : 'Completed',
+        note: rejected ? `${rejected} rows rejected: unrecognised reason code.` : null,
+      };
+      setUploads((p) => [record, ...p]);
+      setBusy(false);
+      notify(rejected ? `${formatNumber(record.accepted)} rows imported, ${rejected} rejected.` : `${formatNumber(record.accepted)} rows imported.`, rejected ? 'warning' : 'success');
+    }, 700);
   };
+
+  const historyColumns = [
+    {
+      key: 'filename', header: 'File', fw: 16,
+      cell: (r) => (
+        <span className="stack stack--xtight" style={{ minWidth: 0 }}>
+          <TruncatedText value={r.filename} className="mono small" />
+          {r.note && <span className="micro subtle">{r.note}</span>}
+        </span>
+      ),
+    },
+    { key: 'uploadedBy', header: 'Uploaded by', fw: 10, cell: (r) => <span className="small mono">{r.uploadedBy}</span> },
+    { key: 'rows', header: 'Rows', fw: 5, align: 'right', cell: (r) => <span className="mono small">{formatNumber(r.rows)}</span> },
+    { key: 'accepted', header: 'Accepted', fw: 6, align: 'right', cell: (r) => <span className="mono small">{formatNumber(r.accepted)}</span> },
+    { key: 'rejected', header: 'Rejected', fw: 6, align: 'right', cell: (r) => <span className="mono small" style={r.rejected ? { color: 'var(--c-danger)' } : undefined}>{formatNumber(r.rejected)}</span> },
+    { key: 'status', header: 'Status', fw: 7, cell: (r) => <Badge tone={r.status === 'Failed' ? 'danger' : 'success'}>{r.status}</Badge> },
+    { key: 'uploadedAt', header: 'When', fw: 9, align: 'right', cell: (r) => <span className="micro subtle nowrap">{formatDateTime(r.uploadedAt)}</span> },
+  ];
+
+  const schemaColumns = [
+    {
+      key: 'column', header: 'Column', fw: 12,
+      cell: (r) => (
+        <span className="stack stack--xtight">
+          <span className="mono small">{r.column}</span>
+          {r.note && <span className="micro subtle">{r.note}</span>}
+        </span>
+      ),
+    },
+    { key: 'example', header: 'Example', fw: 12, cell: (r) => <TruncatedText value={r.example} className="mono micro subtle" /> },
+    { key: 'required', header: 'Required', fw: 6, cell: (r) => <Badge tone={r.required ? 'primary' : 'muted'}>{r.required ? 'Yes' : 'No'}</Badge> },
+  ];
 
   return (
     <>
       <PageHeader
         title="Upload cases"
-        subtitle="Import chargebacks from an acquirer file or claims from the marketplace export."
+        description={`Import chargebacks from an acquirer file, or ${brand.terms.claimProgramme} claims from the ${brand.terms.marketplace} export.`}
       />
 
-      <div className="grid grid--split" style={{ alignItems: 'start' }}>
-        <div className="stack">
+      <div className="grid" style={{ gridTemplateColumns: 'minmax(0, 1.4fr) minmax(300px, 1fr)', alignItems: 'start' }}>
+        <div className="stack stack--tight">
           <Card>
-            <CardBody>
-              <div
-                className={`dropzone ${dragging ? 'is-dragging' : ''}`.trim()}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setDragging(true);
-                }}
-                onDragLeave={() => setDragging(false)}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setDragging(false);
-                  handleFile(e.dataTransfer.files?.[0]);
-                }}
-                onClick={() => inputRef.current?.click()}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => e.key === 'Enter' && inputRef.current?.click()}
-              >
-                <span className="empty__glyph">
-                  <Icon name={uploading ? 'refresh' : 'upload'} size={22} />
-                </span>
-                <span className="strong">{uploading ? 'Importing…' : 'Drop a CSV here, or click to choose'}</span>
-                <span className="small muted">
-                  Rows that fail validation are rejected individually and reported — the rest of the batch still imports.
-                </span>
-                <input
-                  ref={inputRef}
-                  type="file"
-                  accept=".csv,text/csv"
-                  className="sr-only"
-                  onChange={(e) => handleFile(e.target.files?.[0])}
-                />
-              </div>
-            </CardBody>
+            <div
+              className={`dropzone ${dragging ? 'is-dragging' : ''}`.trim()}
+              onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(e) => { e.preventDefault(); setDragging(false); handle(e.dataTransfer.files?.[0]); }}
+              onClick={() => inputRef.current?.click()}
+              onKeyDown={(e) => e.key === 'Enter' && inputRef.current?.click()}
+              role="button"
+              tabIndex={0}
+            >
+              <span className="empty__glyph"><Icon name={busy ? 'refresh' : 'upload'} size={20} /></span>
+              <span className="small strong">{busy ? 'Importing…' : 'Drop a CSV here, or click to choose'}</span>
+              <span className="micro subtle">
+                Rows failing validation are rejected individually and reported — the rest of the batch still imports.
+              </span>
+              <input ref={inputRef} type="file" accept=".csv,text/csv" className="sr-only" onChange={(e) => handle(e.target.files?.[0])} />
+            </div>
           </Card>
 
-          <Card>
-            <CardHead title="Upload history" />
-            <AsyncBoundary status={status} error={error} onRetry={run} skeleton={<SkeletonRows rows={5} />}>
-              {uploads && (
-                <div className="table-wrap">
-                  <table className="tbl">
-                    <thead>
-                      <tr>
-                        <th>File</th>
-                        <th>Uploaded by</th>
-                        <th className="tbl__right">Rows</th>
-                        <th className="tbl__right">Accepted</th>
-                        <th className="tbl__right">Rejected</th>
-                        <th style={{ width: 96 }}>Status</th>
-                        <th className="tbl__right">When</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {uploads.map((upload) => (
-                        <tr key={upload.id}>
-                          <td>
-                            <span className="stack" style={{ gap: 1 }}>
-                              <span className="mono small">{upload.filename}</span>
-                              {upload.note && <span className="micro faint">{upload.note}</span>}
-                            </span>
-                          </td>
-                          <td className="small">{upload.uploadedBy}</td>
-                          <td className="tbl__right mono small">{formatNumber(upload.rows)}</td>
-                          <td className="tbl__right mono small">{formatNumber(upload.accepted)}</td>
-                          <td
-                            className="tbl__right mono small"
-                            style={upload.rejected ? { color: 'var(--c-danger)' } : undefined}
-                          >
-                            {formatNumber(upload.rejected)}
-                          </td>
-                          <td>
-                            <Badge tone={STATUS_TONE[upload.status] ?? 'neutral'}>{upload.status}</Badge>
-                          </td>
-                          <td className="tbl__right micro faint nowrap">{formatDateTime(upload.uploadedAt)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </AsyncBoundary>
+          <Card title="Upload history" bodyClassName="card__body--flush">
+            <DataTable columns={historyColumns} rows={uploads} rowKey={(r) => r.id} />
           </Card>
         </div>
 
-        <Card>
-          <CardHead title="Expected columns" subtitle="Header row must match these names exactly." />
-          <div className="table-wrap">
-            <table className="tbl">
-              <thead>
-                <tr>
-                  <th>Column</th>
-                  <th>Example</th>
-                  <th style={{ width: 70 }}>Required</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(schema ?? []).map((column) => (
-                  <tr key={column.column}>
-                    <td>
-                      <span className="stack" style={{ gap: 1 }}>
-                        <span className="mono small">{column.column}</span>
-                        {column.note && <span className="micro faint">{column.note}</span>}
-                      </span>
-                    </td>
-                    <td className="mono micro faint">{column.example}</td>
-                    <td>
-                      <Badge tone={column.required ? 'primary' : 'muted'}>{column.required ? 'Yes' : 'No'}</Badge>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <Card title="Expected columns" bodyClassName="card__body--flush">
+          <DataTable columns={schemaColumns} rows={schema} rowKey={(r) => r.column} density="fit" />
+          <div className="card__foot">
+            <Icon name="info" size={13} className="subtle" />
+            <span className="micro subtle">The header row must match these names exactly.</span>
           </div>
         </Card>
       </div>

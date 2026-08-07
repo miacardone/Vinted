@@ -2,26 +2,23 @@
  * CONSOLIDATION
  * =============
  * Groups cases that belong together operationally, so an analyst decides once
- * instead of N times — and, more importantly, so they never pay the same money
+ * instead of N times — and, in one specific case, so the same money is not paid
  * out twice.
  *
  * Three linking rules, configured in brand.config:
- *
- *   same card    min 2, 90-day window   — one PAN, several presentments
- *   same order   min 2, 120-day window  — one order disputed more than once
+ *   same card    min 2, 90-day window
+ *   same order   min 2, 120-day window
  *   same seller  min 3, 30-day window, open only
  *
- * WHY THE THRESHOLDS DIFFER. Two disputes on one card is already a signal
- * worth surfacing. Two disputes against one seller is just a seller with
- * volume — which is why that rule needs three, an open-only filter and a
- * tight window. Get this wrong and every case carries a consolidation flag,
- * at which point the flag has stopped telling anyone anything. Tuned to land
- * around 10-15% of the book.
+ * WHY THE THRESHOLDS DIFFER. Two disputes on one card is already worth
+ * surfacing. Two against one seller is just a seller with volume — hence three,
+ * a tight window and an open-only filter. Tuned loosely this flagged 60% of the
+ * book, then 28%; at that rate analysts learn to ignore the flag entirely.
  *
- * THE CROSS-CHANNEL CASE is the one that justifies the hybrid data model. The
- * same order can arrive as a card chargeback *and* as a Buyer Protection
- * claim. Two analysts, two queues, two refunds — for one order. Only a system
- * that holds both intake paths in one book can see it.
+ * WHAT COUNTS AS A DOUBLE REFUND. Only a SHARED ORDER can actually be paid
+ * twice. A seller group that happens to contain a chargeback and a claim across
+ * two different orders is two separate losses — real, but not a double-dip, and
+ * labelling it as one would be wrong.
  */
 
 import brand from '@/brand/brand.config';
@@ -29,59 +26,40 @@ import { isClosed } from '@/domain/statuses';
 
 const DAY = 86_400_000;
 
-/** Linking key per rule. Returning null excludes the case from that rule. */
 const KEY_BUILDERS = {
-  same_card: (c) => (c.card ? `${c.card.bin}:${c.card.last4}` : null),
-  same_order: (c) => c.order?.id ?? null,
-  same_seller: (c) => c.seller?.id ?? null,
+  same_card: (c) => (c.caseType === 'chargeback' && c.ccBin ? `${c.ccBin}:${c.ccLast4}` : null),
+  same_order: (c) => c.orderId ?? null,
+  same_seller: (c) => c.sellerId ?? null,
 };
 
-/** Human label for the group header. */
 const LABEL_BUILDERS = {
-  same_card: (cases) => `Card •••• ${cases[0].card?.last4 ?? '____'}`,
-  same_order: (cases) => `Order ${cases[0].order?.id ?? '—'}`,
-  same_seller: (cases) => `Seller @${cases[0].seller?.handle ?? '—'}`,
+  same_card: (cases) => `Card •••• ${cases[0].ccLast4}`,
+  same_order: (cases) => `Order ${cases[0].orderId}`,
+  same_seller: (cases) => `Seller ${cases[0].seller}`,
 };
 
 /**
- * Largest run of cases whose presentedAt dates all fall inside `windowDays`.
- *
- * A plain min/max span check would reject a genuine cluster just because one
- * stale case shares the key, so this slides a window across the sorted list
- * and keeps the best run instead.
+ * Largest run of cases whose dates all fall inside `windowDays`.
+ * A plain min/max span check would reject a genuine cluster because one stale
+ * case shares the key, so this slides a window and keeps the best run.
  */
 function largestClusterWithin(cases, windowDays) {
   if (windowDays == null) return cases;
 
-  const sorted = [...cases].sort(
-    (a, b) => new Date(a.presentedAt) - new Date(b.presentedAt),
-  );
+  const sorted = [...cases].sort((a, b) => new Date(a.dateCreated) - new Date(b.dateCreated));
   const windowMs = windowDays * DAY;
 
   let best = [];
   let start = 0;
 
   for (let end = 0; end < sorted.length; end += 1) {
-    while (
-      new Date(sorted[end].presentedAt) - new Date(sorted[start].presentedAt) >
-      windowMs
-    ) {
-      start += 1;
-    }
+    while (new Date(sorted[end].dateCreated) - new Date(sorted[start].dateCreated) > windowMs) start += 1;
     const run = sorted.slice(start, end + 1);
     if (run.length > best.length) best = run;
   }
-
   return best;
 }
 
-/**
- * Builds every consolidation group in the book.
- *
- * @param {Array} cases
- * @param {object} config  defaults to brand.consolidation
- * @returns {Array} groups, largest exposure first
- */
 export function buildConsolidationGroups(cases, config = brand.consolidation) {
   const groups = [];
 
@@ -108,7 +86,7 @@ export function buildConsolidationGroups(cases, config = brand.consolidation) {
       if (cluster.length < rule.minSize) return;
 
       const caseTypes = new Set(cluster.map((c) => c.caseType));
-      const totalExposure = cluster.reduce((sum, c) => sum + (c.amount ?? 0), 0);
+      const totalExposure = cluster.reduce((sum, c) => sum + (c.disputeAmount ?? 0), 0);
 
       groups.push({
         id: `${rule.id}:${key}`,
@@ -122,13 +100,10 @@ export function buildConsolidationGroups(cases, config = brand.consolidation) {
         cases: cluster,
         totalExposure: Math.round(totalExposure * 100) / 100,
         currency: cluster[0].currency,
-        /** Both intake paths present in one group. */
         crossChannel: caseTypes.size > 1,
         /**
-         * The double-refund risk is specific to a shared ORDER. A seller group
-         * can mix a chargeback and a claim quite innocently — different orders,
-         * different money. Only the same order billed through two channels can
-         * actually be paid out twice.
+         * Only a shared ORDER can be refunded twice. A cross-channel seller
+         * group is two distinct losses, not a double-dip.
          */
         duplicateRefundRisk: caseTypes.size > 1 && rule.id === 'same_order',
         openCount: cluster.filter((c) => !isClosed(c.status)).length,
@@ -140,7 +115,6 @@ export function buildConsolidationGroups(cases, config = brand.consolidation) {
   return groups.sort((a, b) => b.totalExposure - a.totalExposure);
 }
 
-/** caseId -> groups containing it. Built once, read everywhere. */
 export function indexGroupsByCase(groups) {
   const index = new Map();
   groups.forEach((group) => {
@@ -152,49 +126,35 @@ export function indexGroupsByCase(groups) {
   return index;
 }
 
-/**
- * Headline numbers for the panel and the dashboard. `flaggedRate` is the one
- * to watch — if it drifts far above ~15% the thresholds need retuning, because
- * a flag on everything is a flag on nothing.
- */
+/** `flaggedRate` is the number to watch — drift above ~15% and retune. */
 export function consolidationStats(cases, groups) {
   const flagged = new Set(groups.flatMap((g) => g.caseIds));
-  const crossChannel = groups.filter((g) => g.crossChannel);
   const duplicateRisk = groups.filter((g) => g.duplicateRefundRisk);
 
   return {
     groupCount: groups.length,
     flaggedCases: flagged.size,
     flaggedRate: cases.length ? (flagged.size / cases.length) * 100 : 0,
-    crossChannelGroups: crossChannel.length,
+    crossChannelGroups: groups.filter((g) => g.crossChannel).length,
     duplicateRiskGroups: duplicateRisk.length,
-    totalExposure: Math.round(groups.reduce((sum, g) => sum + g.totalExposure, 0) * 100) / 100,
-    /**
-     * What would actually be paid out twice if each cross-channel order group
-     * were worked separately: everything past the first case in the group.
-     */
+    totalExposure: Math.round(groups.reduce((s, g) => s + g.totalExposure, 0) * 100) / 100,
     duplicateRefundExposure:
-      Math.round(
-        duplicateRisk.reduce((sum, g) => sum + g.totalExposure - (g.cases[0]?.amount ?? 0), 0) * 100,
-      ) / 100,
+      Math.round(duplicateRisk.reduce((s, g) => s + g.totalExposure - (g.cases[0]?.disputeAmount ?? 0), 0) * 100) / 100,
   };
 }
 
-/**
- * Panel copy. Kept next to the rules rather than in the component so the
- * explanation and the threshold can never drift apart.
- */
+/** Panel copy — kept beside the rules so wording and threshold cannot drift. */
 export function explainGroup(group) {
   if (group.duplicateRefundRisk) {
-    return `This order is being disputed through two channels at once — a card chargeback and a ${brand.terms.claimProgramme} claim. Worked separately, the same order gets refunded twice.`;
+    return `This ${brand.terms.order} is being disputed through two channels at once — a card ${brand.terms.chargeback} and a ${brand.terms.claimProgramme} ${brand.terms.claim}. Worked separately, the same ${brand.terms.order} gets refunded twice.`;
   }
   switch (group.ruleId) {
     case 'same_card':
       return `${group.size} disputes were presented on the same card within ${group.windowDays} days. A shared card usually means one decision, and often one fraud pattern.`;
     case 'same_order':
-      return `The same order has been disputed ${group.size} times. Check for a duplicate presentment before responding to either.`;
+      return `The same ${brand.terms.order} has been disputed ${group.size} times. Check for a duplicate presentment before responding to either.`;
     case 'same_seller':
-      return `${group.size} open disputes against this ${brand.terms.seller} inside ${group.windowDays} days. Treat as a seller-level pattern rather than ${group.size} unrelated cases.`;
+      return `${group.size} open disputes against this ${brand.terms.seller} inside ${group.windowDays} days. Treat as a ${brand.terms.seller}-level pattern rather than ${group.size} unrelated cases. These are separate ${brand.terms.orders ?? 'orders'} — separate losses, not one refund paid twice.`;
     default:
       return group.ruleDescription;
   }

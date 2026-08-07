@@ -1,182 +1,286 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import PageHeader from '@/components/layout/PageHeader';
-import Card, { CardBody } from '@/components/ui/Card';
-import Tabs from '@/components/ui/Tabs';
-import Button from '@/components/ui/Button';
-import Icon from '@/components/ui/Icon';
-import Pagination from '@/components/ui/Pagination';
-import { AsyncBoundary, EmptyState, SkeletonRows } from '@/components/ui/Feedback';
-import CaseTable from '@/components/cases/CaseTable';
-import CaseFilters from '@/components/cases/CaseFilters';
-import BulkEditModal from '@/components/cases/BulkEditModal';
-import { useAsync } from '@/hooks/useAsync';
-import { useSelection } from '@/hooks/useSelection';
+import { useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { PageHeader, Card, Toolbar, Tabs, Button, IconButton, EmptyState, Badge } from '@/components/ui/Surface';
+import { DataTable, ColumnToggle, DensityToggle, ExportButtons, Pagination } from '@/components/ui/DataTable';
+import { SearchBar } from '@/components/ui/Form';
+import { Modal } from '@/components/ui/Modal';
+import { AdvancedFiltersModal, EMPTY_FILTERS, QueueFilter, StatusFilter, applyFilters, countActive } from '@/components/cases/CaseFilters';
+import { buildCaseColumns } from '@/components/cases/caseColumns';
+import { CASES } from '@/data/cases';
+import { getCaseHistory } from '@/data/work-case';
+import { buildConsolidationGroups } from '@/domain/consolidation';
+import { isClosed } from '@/domain/statuses';
+import { CASE_TYPES } from '@/domain/caseTypes';
 import { useToast } from '@/context/ToastContext';
-import { bulkUpdateCases, getConsolidationOverview, listCases } from '@/services/cases.service';
-import { CASE_TABS, DEFAULT_PAGE_SIZE } from '@/utils/constants';
-import { pluralise } from '@/utils/format';
-import { useBrand } from '@/brand/BrandProvider';
+import { ROUTES } from '@/data/navigation';
+import { readPref, writePref } from '@/utils/storage';
+import { formatCurrency, formatDate, formatDateTime, formatNumber } from '@/utils/format';
 
-const EMPTY_FILTERS = {
-  caseType: 'all',
-  statuses: [],
-  queueIds: [],
-  assigneeIds: [],
-  schemeIds: [],
-  reasonCodes: [],
-  entityIds: [],
-  markets: [],
-  search: '',
-  amountMin: '',
-  amountMax: '',
-  dueWithinDays: '',
-};
+const DENSITY_KEY = 'ddc.cases.density';
+
+/** Archived is a TAB here, not a separate page. */
+const TABS = [
+  { value: 'open', label: 'Open' },
+  { value: 'archived', label: 'Archived' },
+  { value: 'all', label: 'All' },
+];
+
+/* ---------- Inline detail shown by an expanded row ---------- */
+
+function RowDetail({ row }) {
+  const fields = row.caseType === 'chargeback'
+    ? [
+        ['Reason code', row.reasonCode], ['ARN', row.arn], ['MID', row.mid],
+        ['Post date', formatDate(row.postDate)], ['Trans. date', formatDate(row.transDate)],
+        ['CC BIN', row.ccBin], ['CC last 4', row.ccLast4],
+        ['Trans. amount', formatCurrency(row.transactionAmount, row.currency)], ['Trans. curr.', row.currency],
+        ['Merch. ref #', row.merchantRef], ['Reviewer', row.reviewer],
+        ['Outcome', row.outcome], ['Doc status', row.docStatus],
+      ]
+    : [
+        ['Claim reason', row.reasonLabel], ['Order ID', row.orderId], ['Item', row.itemTitle],
+        ['Category', row.itemCategory], ['Buyer', row.buyer], ['Seller', row.seller],
+        ['Seller rating', row.sellerRating], ['Payment method', row.paymentMethod],
+        ['Trans. amount', formatCurrency(row.transactionAmount, row.currency)], ['Trans. curr.', row.currency],
+        ['Merch. ref #', row.merchantRef], ['Reviewer', row.reviewer],
+        ['Doc status', row.docStatus],
+      ];
+
+  return (
+    <div className="stack stack--tight">
+      <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 'var(--s-2)' }}>
+        {fields.map(([k, v]) => (
+          <div key={k} className="detail-row">
+            <span className="detail-row__k">{k}</span>
+            <span className="detail-row__v mono">{v ?? '—'}</span>
+          </div>
+        ))}
+      </div>
+      <div className="detail-row detail-row--wide">
+        <span className="detail-row__k">Last note</span>
+        <span className="detail-row__v">{row.lastNote}</span>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Case history modal ---------- */
+
+function CaseHistoryModal({ row, onClose }) {
+  const events = useMemo(() => (row ? getCaseHistory(row.id) : []), [row]);
+  const [expanded, setExpanded] = useState(new Set());
+
+  const columns = [
+    { key: 'user', header: 'Username', fw: 10, cell: (e) => <span className="mono small">{e.user}</span> },
+    { key: 'case', header: 'Case #', fw: 7, cell: () => <span className="mono small">{row.id}</span> },
+    { key: 'action', header: 'Action', fw: 14 },
+    { key: 'status', header: 'Status', fw: 7, cell: () => <Badge tone="neutral">{row.status}</Badge> },
+    { key: 'cycle', header: 'Dispute cycle', fw: 8, cell: () => <span className="small">{row.cycleLabel ?? '—'}</span> },
+    { key: 'at', header: 'When', fw: 9, cell: (e) => <span className="micro subtle nowrap">{formatDateTime(e.at)}</span> },
+  ];
+
+  return (
+    <Modal
+      open={Boolean(row)}
+      onClose={onClose}
+      title="Case history"
+      subtitle={row ? `${row.id} · ${events.length} events` : undefined}
+      size="xl"
+      footer={<Button variant="secondary" onClick={onClose}>Close</Button>}
+    >
+      <div className="row row--end" style={{ marginBottom: 'var(--s-2)' }}>
+        <ExportButtons columns={columns} rows={events} name={`case-history-${row?.id}`} />
+      </div>
+      <DataTable
+        columns={columns}
+        rows={events}
+        rowKey={(e) => e.id}
+        expansion={{
+          expanded,
+          onToggle: (id) => setExpanded((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; }),
+          render: (e) => <p className="small muted">{e.detail}</p>,
+        }}
+      />
+    </Modal>
+  );
+}
+
+/* ---------- Page ---------- */
 
 export function CaseManagement() {
-  const brand = useBrand();
+  const navigate = useNavigate();
   const { notify } = useToast();
   const [searchParams] = useSearchParams();
-  const selection = useSelection();
 
   const [tab, setTab] = useState('open');
+  const [search, setSearch] = useState(searchParams.get('search') ?? '');
   const [filters, setFilters] = useState(() => ({
     ...EMPTY_FILTERS,
-    search: searchParams.get('search') ?? '',
+    queues: searchParams.get('queue') ? [searchParams.get('queue')] : [],
   }));
-  const [sort, setSort] = useState({ field: 'dueAt', direction: 'asc' });
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [density, setDensity] = useState(() => readPref(DENSITY_KEY, 'fit'));
+  const [hidden, setHidden] = useState(new Set());
+  const [sort, setSort] = useState({ key: 'dueDate', dir: 'asc' });
+  const [selected, setSelected] = useState(new Set());
+  const [expanded, setExpanded] = useState(new Set());
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
-  const [bulkOpen, setBulkOpen] = useState(false);
-  const [applying, setApplying] = useState(false);
+  const [pageSize, setPageSize] = useState(10);
+  const [historyRow, setHistoryRow] = useState(null);
 
-  const query = useMemo(
-    () => ({ filters: { ...filters, tab }, sort, page, pageSize }),
-    [filters, tab, sort, page, pageSize],
-  );
+  const linkedIds = useMemo(() => new Set(buildConsolidationGroups(CASES).flatMap((g) => g.caseIds)), []);
 
-  const { data, status, error, run } = useAsync(() => listCases(query), [query]);
-  const { data: consolidation } = useAsync(getConsolidationOverview, []);
+  const scoped = useMemo(() => {
+    if (tab === 'open') return CASES.filter((c) => !isClosed(c.status));
+    if (tab === 'archived') return CASES.filter((c) => isClosed(c.status));
+    return CASES;
+  }, [tab]);
 
-  const linkedCaseIds = useMemo(
-    () => new Set((consolidation?.groups ?? []).flatMap((g) => g.caseIds)),
-    [consolidation],
-  );
+  const filtered = useMemo(() => applyFilters(scoped, filters, search), [scoped, filters, search]);
 
-  // Any change to what is being shown resets to page 1, or the operator lands
-  // on an empty page 7 of a 2-page result.
-  useEffect(() => {
-    setPage(1);
-  }, [filters, tab, pageSize]);
+  const sorted = useMemo(() => {
+    const rows = [...filtered];
+    rows.sort((a, b) => {
+      const av = a[sort.key];
+      const bv = b[sort.key];
+      const cmp = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av ?? '').localeCompare(String(bv ?? ''));
+      return sort.dir === 'asc' ? cmp : -cmp;
+    });
+    return rows;
+  }, [filtered, sort]);
 
-  const onApplyBulk = useCallback(
-    async (changes) => {
-      setApplying(true);
-      try {
-        const result = await bulkUpdateCases(selection.ids, changes);
-        notify(`${pluralise(result.applied, 'case')} updated.`, 'success');
-        setBulkOpen(false);
-        selection.clear();
-        await run();
-      } catch (err) {
-        notify(err.message ?? 'Bulk edit failed.', 'danger');
-      } finally {
-        setApplying(false);
-      }
-    },
-    [selection, notify, run],
-  );
+  const pageRows = useMemo(() => sorted.slice((page - 1) * pageSize, page * pageSize), [sorted, page, pageSize]);
 
-  const meta = data?.meta;
+  const allColumns = useMemo(() => buildCaseColumns(filters.caseType, { linkedIds }), [filters.caseType, linkedIds]);
+  const columns = useMemo(() => {
+    const visible = allColumns.filter((c) => !hidden.has(c.key));
+    return [
+      ...visible,
+      {
+        key: 'actions',
+        header: 'Actions',
+        fw: 6,
+        width: '92px',
+        cell: (row) => (
+          <div className="row row--xtight row--nowrap" onClick={(e) => e.stopPropagation()}>
+            <IconButton icon="history" label="Case history" size={13} onClick={() => setHistoryRow(row)} />
+            <IconButton icon="wrench" label="Work this case" size={13} onClick={() => navigate(ROUTES.workCaseDetail(row.id))} />
+          </div>
+        ),
+      },
+    ];
+  }, [allColumns, hidden, navigate]);
+
+  const changeFilters = (next) => { setFilters(next); setPage(1); };
+  const changeTab = (next) => { setTab(next); setPage(1); setSelected(new Set()); };
+
+  const setDensityPref = (d) => {
+    setDensity(d);
+    writePref(DENSITY_KEY, d);
+  };
 
   return (
     <>
       <PageHeader
         title="Case management"
-        subtitle={`Every ${brand.terms.chargeback} and ${brand.terms.claim} in one queue. Columns adapt to the case type you filter on.`}
-        actions={
-          <Button variant="secondary" icon="download">
-            Export view
-          </Button>
+        description="Every chargeback and Buyer Protection claim in one queue. Columns adapt to the case type you filter on."
+        meta={
+          <p className="page-head__desc">
+            <strong className="mono">{formatNumber(filtered.length)}</strong> of{' '}
+            <strong className="mono">{formatNumber(CASES.length)}</strong> cases · Default view (All cycles)
+          </p>
         }
       />
 
-      <Card>
-        <CardBody tight>
-          <Tabs tabs={CASE_TABS} active={tab} onChange={setTab} />
+      <Card bodyClassName="card__body--flush">
+        <div style={{ padding: '0 var(--s-4)' }}>
+          <Tabs
+            tabs={TABS.map((t) => ({
+              ...t,
+              badge: formatNumber(
+                t.value === 'open' ? CASES.filter((c) => !isClosed(c.status)).length
+                  : t.value === 'archived' ? CASES.filter((c) => isClosed(c.status)).length
+                    : CASES.length,
+              ),
+            }))}
+            value={tab}
+            onChange={changeTab}
+          />
+        </div>
 
-          <div style={{ paddingTop: 'var(--s-4)' }}>
-            <CaseFilters filters={filters} onChange={setFilters} resultCount={meta?.total} />
+        <Toolbar>
+          <div className="row row--tight">
+            <SearchBar
+              value={search}
+              onChange={(v) => { setSearch(v); setPage(1); }}
+              placeholder="Case #, ARN, order, item, buyer or seller…"
+              onAdvanced={() => setAdvancedOpen(true)}
+              advancedCount={countActive(filters)}
+            />
+            <StatusFilter rows={scoped} selected={filters.statuses} onChange={(v) => changeFilters({ ...filters, statuses: v })} />
+            <QueueFilter rows={scoped} selected={filters.queues} onChange={(v) => changeFilters({ ...filters, queues: v })} />
           </div>
-        </CardBody>
 
-        {selection.count > 0 && (
-          <div style={{ padding: '0 var(--s-4)' }}>
-            <div className="bulk-bar">
-              <span className="bulk-bar__count">{selection.count}</span>
-              <span className="small">selected</span>
-              <span className="spacer" />
-              <Button variant="secondary" size="sm" icon="edit" onClick={() => setBulkOpen(true)}>
-                Bulk edit
-              </Button>
-              <Button variant="ghost" size="sm" onClick={selection.clear}>
-                Clear selection
-              </Button>
+          <div className="row row--tight">
+            <DensityToggle value={density} onChange={setDensityPref} />
+            <ColumnToggle columns={allColumns} hidden={hidden} onChange={setHidden} />
+            <ExportButtons
+              columns={columns.filter((c) => c.key !== 'actions')}
+              rows={sorted}
+              name="cases"
+              onCopied={(ok) => notify(ok ? 'Copied to clipboard.' : 'Your browser blocked clipboard access.', ok ? 'success' : 'danger')}
+            />
+          </div>
+        </Toolbar>
+
+        {selected.size > 0 && (
+          <div className="row row--between" style={{ padding: 'var(--s-2) var(--s-4)', background: 'var(--c-primary-tint)' }}>
+            <span className="small strong">{selected.size} selected</span>
+            <div className="row row--tight">
+              <Button variant="secondary" size="sm" icon="edit" onClick={() => notify(`Bulk edit would apply to ${selected.size} cases.`)}>Bulk edit</Button>
+              <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>Clear</Button>
             </div>
           </div>
         )}
 
-        <AsyncBoundary
-          status={status}
-          error={error}
-          onRetry={run}
-          skeleton={<SkeletonRows rows={8} />}
-          isEmpty={data?.data?.length === 0}
+        <DataTable
+          columns={columns}
+          rows={pageRows}
+          rowKey={(r) => r.id}
+          density={density}
+          sort={sort}
+          onSort={(key) => setSort((p) => (p.key === key ? { key, dir: p.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }))}
+          selection={{
+            selected,
+            onToggle: (id) => setSelected((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; }),
+            onToggleAll: (ids, check) => setSelected((p) => { const n = new Set(p); ids.forEach((id) => (check ? n.add(id) : n.delete(id))); return n; }),
+          }}
+          expansion={{
+            expanded,
+            onToggle: (id) => setExpanded((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; }),
+            render: (row) => <RowDetail row={row} />,
+          }}
           empty={
             <EmptyState
               icon="search"
               title="No cases match this view"
-              body="Try widening the filters, or switch to the All tab to include archived cases."
-              action={{ label: 'Reset filters', icon: 'refresh', onClick: () => setFilters(EMPTY_FILTERS) }}
+              hint="Widen the filters, or switch to the All tab to include archived cases."
+              action={<Button variant="secondary" icon="refresh" onClick={() => { changeFilters({ ...EMPTY_FILTERS }); setSearch(''); }}>Reset filters</Button>}
             />
           }
-        >
-          {data && (
-            <>
-              <CaseTable
-                cases={data.data}
-                caseType={filters.caseType}
-                selection={selection}
-                sort={sort}
-                onSortChange={setSort}
-                linkedCaseIds={linkedCaseIds}
-              />
+        />
 
-              <Pagination
-                page={meta.page}
-                pageSize={meta.pageSize}
-                total={meta.total}
-                totalPages={meta.totalPages}
-                onPageChange={setPage}
-                onPageSizeChange={setPageSize}
-              />
-            </>
-          )}
-        </AsyncBoundary>
+        <Pagination
+          total={sorted.length}
+          page={page}
+          pageSize={pageSize}
+          onPageChange={setPage}
+          onPageSizeChange={(s) => { setPageSize(s); setPage(1); }}
+        />
       </Card>
 
-      <p className="micro faint row row--tight" style={{ marginTop: 'var(--s-3)' }}>
-        <Icon name="link" size={12} style={{ color: 'var(--c-primary)' }} />
-        A link icon next to a case ID means it is consolidated with other cases.
-      </p>
-
-      <BulkEditModal
-        open={bulkOpen}
-        onClose={() => setBulkOpen(false)}
-        count={selection.count}
-        onApply={onApplyBulk}
-        busy={applying}
-      />
+      <AdvancedFiltersModal open={advancedOpen} onClose={() => setAdvancedOpen(false)} filters={filters} onApply={changeFilters} />
+      <CaseHistoryModal row={historyRow} onClose={() => setHistoryRow(null)} />
     </>
   );
 }

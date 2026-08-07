@@ -1,449 +1,290 @@
-import { useState } from 'react';
-import PageHeader from '@/components/layout/PageHeader';
-import Card, { CardBody, CardHead } from '@/components/ui/Card';
-import Button from '@/components/ui/Button';
+import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { PageHeader, Card, Toolbar, Button, IconButton, Badge, EmptyState } from '@/components/ui/Surface';
+import { DataTable, ColumnToggle, ExportButtons } from '@/components/ui/DataTable';
+import { Modal, ConfirmDialog } from '@/components/ui/Modal';
+import { SelectField, TextAreaField, TextField } from '@/components/ui/Form';
+import { Tooltip, TruncatedText } from '@/components/ui/Overlay';
 import Icon from '@/components/ui/Icon';
-import Modal from '@/components/ui/Modal';
-import Drawer from '@/components/ui/Drawer';
-import Stepper from '@/components/ui/Stepper';
-import { Badge } from '@/components/ui/Badge';
-import { Select, Textarea, TextInput } from '@/components/ui/Field';
-import { AsyncBoundary, EmptyState, SkeletonRows } from '@/components/ui/Feedback';
-import CriteriaBuilder from '@/components/rules/CriteriaBuilder';
-import { useAsync } from '@/hooks/useAsync';
+import { RULES, RULE_GROUPS, RULE_TRIGGERS, historyForRule } from '@/data/rules';
+import { CASES } from '@/data/cases';
+import { describeCriterion, getRuleAction, matchCases } from '@/domain/criteria';
+import { applyDrop, blockFor, displayNumbers, orderedRules, resolveDrop } from '@/utils/reorderRules';
 import { useToast } from '@/context/ToastContext';
-import { createRule, getRuleHistory, listRuleGroups, listRules, setRuleEnabled } from '@/services/rules.service';
-import { listAllCases } from '@/services/cases.service';
-import { RULE_ACTIONS, getRuleAction } from '@/data/rules.seed';
-import { describeCriterion, matchCases } from '@/domain/criteria';
-import { formatDateTime, formatNumber, relativeTime } from '@/utils/format';
-import { useBrand } from '@/brand/BrandProvider';
-import { STATUSES } from '@/domain/statuses';
-import { ASSIGNABLE_ANALYSTS } from '@/data/users.seed';
+import { ROUTES } from '@/data/navigation';
+import { formatDateTime, formatNumber } from '@/utils/format';
 
-const WIZARD_STEPS = [
-  { id: 'criteria', label: 'Criteria' },
-  { id: 'action', label: 'Action' },
-  { id: 'details', label: 'Details' },
-];
+/**
+ * Rule groups.
+ *
+ * Sub-rules indent with ↳ and take decimal numbering (2.1), and reordering is
+ * confined to their parent — dropping a sub-rule among another parent's
+ * children is rejected rather than silently re-parenting it. See
+ * utils/reorderRules.js.
+ */
 
-/** Value picker for a rule action — the options depend on the action type. */
-function ActionValueField({ action, value, onChange }) {
-  const brand = useBrand();
-  const spec = getRuleAction(action);
-
-  switch (spec?.valueType) {
-    case 'queue':
-      return (
-        <Select
-          label="Destination queue"
-          value={value ?? ''}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="Select a queue…"
-          options={brand.queues.map((q) => ({ value: q.id, label: q.label }))}
-        />
-      );
-    case 'user':
-      return (
-        <Select
-          label="Assign to"
-          value={value ?? ''}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="Select an analyst…"
-          options={ASSIGNABLE_ANALYSTS.map((a) => ({ value: a.id, label: a.name }))}
-        />
-      );
-    case 'status':
-      return (
-        <Select
-          label="Set status to"
-          value={value ?? ''}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="Select a status…"
-          options={STATUSES.map((s) => ({ value: s.id, label: s.label }))}
-        />
-      );
-    case 'text':
-      return <Textarea label="Note text" value={value ?? ''} onChange={(e) => onChange(e.target.value)} rows={2} />;
-    default:
-      return null;
-  }
-}
-
-function AddRuleWizard({ open, onClose, groups, defaultGroupId, cases, onCreated }) {
-  const [step, setStep] = useState(0);
-  const [criteria, setCriteria] = useState([]);
-  const [matchType, setMatchType] = useState('all');
-  const [actionId, setActionId] = useState('route_queue');
-  const [actionValue, setActionValue] = useState('');
+function GroupModal({ open, onClose, onSave }) {
   const [name, setName] = useState('');
+  const [trigger, setTrigger] = useState(RULE_TRIGGERS[0]);
   const [description, setDescription] = useState('');
-  const [groupId, setGroupId] = useState(defaultGroupId ?? groups[0]?.id ?? '');
-  const [saving, setSaving] = useState(false);
-
-  // The live count is what makes the criteria step honest — it runs the
-  // in-progress rule against the real book on every keystroke.
-  const matched = matchCases(cases, criteria, matchType);
-
-  const reset = () => {
-    setStep(0);
-    setCriteria([]);
-    setMatchType('all');
-    setActionId('route_queue');
-    setActionValue('');
-    setName('');
-    setDescription('');
-  };
-
-  const canAdvance =
-    (step === 0 && criteria.length > 0) ||
-    (step === 1 && Boolean(actionId)) ||
-    (step === 2 && name.trim().length > 0 && Boolean(groupId));
-
-  const save = async () => {
-    setSaving(true);
-    try {
-      await onCreated({
-        name: name.trim(),
-        description: description.trim(),
-        groupId,
-        enabled: true,
-        matchType,
-        criteria,
-        actions: [{ id: 'a1', actionId, value: actionValue || null }],
-      });
-      reset();
-    } finally {
-      setSaving(false);
-    }
-  };
 
   return (
     <Modal
       open={open}
-      onClose={() => {
-        reset();
-        onClose();
-      }}
-      title="Add rule"
-      size="wide"
+      onClose={onClose}
+      title="Create rule group"
       footer={
         <>
-          <Button variant="ghost" onClick={() => (step === 0 ? onClose() : setStep(step - 1))} disabled={saving}>
-            {step === 0 ? 'Cancel' : 'Back'}
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" disabled={!name.trim()} onClick={() => { onSave({ name: name.trim(), triggeredBy: trigger, description: description.trim() }); setName(''); setDescription(''); }}>
+            Create group
           </Button>
-          {step < 2 ? (
-            <Button variant="primary" onClick={() => setStep(step + 1)} disabled={!canAdvance}>
-              Continue
-            </Button>
-          ) : (
-            <Button variant="primary" onClick={save} disabled={!canAdvance || saving}>
-              {saving ? 'Creating…' : 'Create rule'}
-            </Button>
-          )}
         </>
       }
     >
-      <div style={{ margin: 'calc(var(--s-5) * -1) calc(var(--s-5) * -1) var(--s-4)' }}>
-        <Stepper steps={WIZARD_STEPS} current={step} onStepClick={setStep} />
+      <div className="stack">
+        <TextField label="Name" required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. 02_Fraud routing" />
+        <SelectField label="Triggered by" required value={trigger} onChange={(e) => setTrigger(e.target.value)} options={RULE_TRIGGERS.map((t) => ({ value: t, label: t }))} />
+        <TextAreaField label="Description" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
       </div>
+    </Modal>
+  );
+}
 
-      {step === 0 && (
-        <div className="stack">
-          <CriteriaBuilder
-            criteria={criteria}
-            onChange={setCriteria}
-            cases={cases}
-            matchType={matchType}
-            onMatchTypeChange={setMatchType}
-          />
+function HistoryModal({ rule, onClose }) {
+  const entries = useMemo(() => (rule ? historyForRule(rule.id) : []), [rule]);
 
-          <div className="row row--tight small" style={{ padding: 'var(--s-3)', background: 'var(--c-primary-wash)', borderRadius: 'var(--r-md)' }}>
-            <Icon name="info" size={15} style={{ color: 'var(--c-primary)' }} />
-            <span>
-              Matches <strong className="mono">{formatNumber(matched.length)}</strong> of{' '}
-              <strong className="mono">{formatNumber(cases.length)}</strong> cases in the current book.
-            </span>
-          </div>
+  return (
+    <Modal open={Boolean(rule)} onClose={onClose} title="Rule history" subtitle={rule?.name} size="lg" footer={<Button variant="secondary" onClick={onClose}>Close</Button>}>
+      {entries.length ? (
+        <div className="timeline">
+          {entries.map((e) => (
+            <div key={e.id} className="timeline__item">
+              <span className="timeline__marker" />
+              <div>
+                <div className="small strong">{e.type}</div>
+                <div className="micro subtle">{e.user} · {formatDateTime(e.timestamp)}</div>
+                <div className="small muted">{e.detail}</div>
+              </div>
+            </div>
+          ))}
         </div>
-      )}
-
-      {step === 1 && (
-        <div className="stack">
-          <Select
-            label="Action"
-            value={actionId}
-            onChange={(e) => {
-              setActionId(e.target.value);
-              setActionValue('');
-            }}
-            options={RULE_ACTIONS.map((a) => ({ value: a.id, label: a.label }))}
-          />
-          <ActionValueField action={actionId} value={actionValue} onChange={setActionValue} />
-          <p className="small muted">
-            This action applies to every case the criteria match, each time the rule runs.
-          </p>
-        </div>
-      )}
-
-      {step === 2 && (
-        <div className="stack">
-          <TextInput label="Rule name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. High-value fraud routing" />
-          <Textarea label="Description" value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
-          <Select
-            label="Rule group"
-            value={groupId}
-            onChange={(e) => setGroupId(e.target.value)}
-            options={groups.map((g) => ({ value: g.id, label: g.name }))}
-          />
-
-          <div className="stack stack--tight" style={{ padding: 'var(--s-3)', background: 'var(--c-surface-sunken)', borderRadius: 'var(--r-md)' }}>
-            <span className="eyebrow">Summary</span>
-            <span className="small">
-              When <strong>{matchType === 'all' ? 'all' : 'any'}</strong> of:
-            </span>
-            <ul className="small muted" style={{ margin: 0, paddingLeft: 'var(--s-5)' }}>
-              {criteria.map((c) => (
-                <li key={c.id}>{describeCriterion(c)}</li>
-              ))}
-            </ul>
-            <span className="small">
-              Then <strong>{getRuleAction(actionId)?.label}</strong>
-              {actionValue ? <> → <span className="mono">{actionValue}</span></> : null}
-            </span>
-            <span className="micro faint">Currently matches {formatNumber(matched.length)} cases.</span>
-          </div>
-        </div>
+      ) : (
+        <EmptyState icon="history" title="No recorded changes" hint="This rule has not been edited since it was created." />
       )}
     </Modal>
   );
 }
 
 export function RuleGroups() {
+  const navigate = useNavigate();
   const { notify } = useToast();
-  const [activeGroupId, setActiveGroupId] = useState(null);
-  const [wizardOpen, setWizardOpen] = useState(false);
+
+  const [groups, setGroups] = useState(RULE_GROUPS);
+  const [rules, setRules] = useState(RULES);
+  const [activeId, setActiveId] = useState(RULE_GROUPS[1].id);
+  const [groupModal, setGroupModal] = useState(false);
   const [historyRule, setHistoryRule] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [hidden, setHidden] = useState(new Set());
+  const [draggingId, setDraggingId] = useState(null);
 
-  const { data: groups, status, error, run: reloadGroups } = useAsync(listRuleGroups, []);
-  const { data: allCases } = useAsync(listAllCases, []);
+  const group = groups.find((g) => g.id === activeId) ?? groups[0];
+  const groupRules = useMemo(() => rules.filter((r) => r.groupId === group.id), [rules, group.id]);
+  const ordered = useMemo(() => orderedRules(groupRules), [groupRules]);
+  const numbers = useMemo(() => displayNumbers(groupRules), [groupRules]);
 
-  const selectedGroupId = activeGroupId ?? groups?.[0]?.id ?? null;
+  const parentCount = groupRules.filter((r) => !r.parentId).length;
+  const subCount = groupRules.length - parentCount;
 
-  const { data: rules, run: reloadRules } = useAsync(
-    () => (selectedGroupId ? listRules(selectedGroupId) : Promise.resolve([])),
-    [selectedGroupId],
-  );
+  /** Live impact: how many real cases each rule's criteria select. */
+  const impactOf = (rule) => matchCases(CASES, rule.criteria, 'all').length;
 
-  const { data: history, status: historyStatus } = useAsync(
-    () => (historyRule ? getRuleHistory(historyRule.id) : Promise.resolve([])),
-    [historyRule],
-  );
-
-  const toggle = async (rule) => {
-    try {
-      await setRuleEnabled(rule.id, !rule.enabled);
-      notify(`“${rule.name}” ${rule.enabled ? 'disabled' : 'enabled'}.`, 'success');
-      await Promise.all([reloadRules(), reloadGroups()]);
-    } catch (err) {
-      notify(err.message ?? 'Could not change the rule.', 'danger');
-    }
+  const toggleRule = (id) => {
+    setRules((p) => p.map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r)));
+    const rule = rules.find((r) => r.id === id);
+    notify(`“${rule.name}” ${rule.enabled ? 'disabled' : 'enabled'}.`, 'success');
   };
 
-  const selectedGroup = groups?.find((g) => g.id === selectedGroupId);
+  const columns = [
+    {
+      key: 'sortOrder', header: 'Sort order', fw: 6, width: '96px',
+      cell: (r) => (
+        <span className="row row--xtight row--nowrap">
+          <span className="drag-handle"><Icon name="drag" size={12} /></span>
+          <span className="mono small">{r.parentId ? '↳ ' : ''}{numbers.get(r.id)}</span>
+        </span>
+      ),
+    },
+    {
+      key: 'name', header: 'Rule name', fw: 12,
+      cell: (r) => <span className="small strong" style={r.parentId ? { paddingLeft: 14, display: 'inline-block' } : undefined}>{r.name}</span>,
+    },
+    { key: 'description', header: 'Rule description', fw: 14, cell: (r) => <TruncatedText value={r.description} className="small muted" /> },
+    {
+      key: 'criteria', header: 'Rule criteria', fw: 14,
+      cell: (r) => (
+        <span className="stack stack--xtight">
+          {r.criteria.map((c, i) => <span key={i} className="micro">{describeCriterion(c)}</span>)}
+        </span>
+      ),
+    },
+    {
+      key: 'actions_col', header: 'Rule actions', fw: 10,
+      cell: (r) => (
+        <span className="stack stack--xtight">
+          {r.actions.map((a, i) => (
+            <span key={i} className="micro" style={{ color: 'var(--c-primary)' }}>
+              {getRuleAction(a.key)?.label ?? a.key}{a.value ? ` → ${a.value}` : ''}
+            </span>
+          ))}
+        </span>
+      ),
+    },
+    { key: 'impact', header: 'Impact', fw: 6, align: 'right', cell: (r) => <span className="mono small">{formatNumber(impactOf(r))}</span> },
+    {
+      key: 'enabled', header: 'Active', fw: 5, width: '64px',
+      cell: (r) => (
+        <input type="checkbox" className="toggle" checked={r.enabled} onChange={() => toggleRule(r.id)} aria-label={`Enable ${r.name}`} />
+      ),
+    },
+    {
+      key: 'row_actions', header: 'Actions', fw: 8, width: '116px',
+      cell: (r) => (
+        <div className="row row--xtight row--nowrap">
+          <IconButton icon="history" label="Rule history" size={13} onClick={() => setHistoryRule(r)} />
+          <IconButton icon="branch" label="Add sub-rule" size={13} onClick={() => notify('Sub-rule builder opens from the rule builder.')} />
+          <IconButton icon="edit" label="Edit rule" size={13} onClick={() => navigate(ROUTES.addRule)} />
+          <IconButton icon="trash" label="Delete rule" tone="danger" size={13} onClick={() => setConfirmDelete(r)} />
+        </div>
+      ),
+    },
+  ];
+
+  const visible = columns.filter((c) => !hidden.has(c.key));
 
   return (
     <>
       <PageHeader
         title="Rule groups"
-        subtitle="Automation that runs at intake and on a schedule. Groups run in order; rules inside a group all evaluate."
-        actions={
-          <Button variant="primary" icon="plus" onClick={() => setWizardOpen(true)} disabled={!groups?.length}>
-            Add rule
-          </Button>
-        }
+        description="Automation that runs at intake, on a schedule and after other rules fire. Groups run in order; every rule inside a group is evaluated."
+        actions={<Button variant="primary" icon="plus" onClick={() => navigate(ROUTES.addRule)}>Add Rule</Button>}
       />
 
-      <AsyncBoundary status={status} error={error} onRetry={reloadGroups} skeleton={<SkeletonRows rows={5} />}>
-        {groups && (
-          <div className="grid" style={{ gridTemplateColumns: 'minmax(240px, 320px) minmax(0, 1fr)', alignItems: 'start' }}>
-            <Card>
-              <CardHead title="Groups" subtitle={`${groups.length} groups`} />
-              <div className="hairline-list" style={{ padding: '0 var(--s-4)' }}>
-                {groups.map((group) => (
-                  <button
-                    key={group.id}
-                    type="button"
-                    onClick={() => setActiveGroupId(group.id)}
-                    className="row row--between"
-                    style={{
-                      border: 0,
-                      background: group.id === selectedGroupId ? 'var(--c-primary-wash)' : 'transparent',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      margin: '0 calc(var(--s-4) * -1)',
-                      padding: 'var(--s-3) var(--s-4)',
-                      width: 'calc(100% + var(--s-4) * 2)',
-                    }}
-                  >
-                    <span className="stack" style={{ gap: 2, minWidth: 0 }}>
-                      <span className="row row--tight">
-                        <span className="small strong">{group.name}</span>
-                        {!group.enabled && <Badge tone="muted">Off</Badge>}
-                      </span>
-                      <span className="micro faint truncate">{group.description}</span>
+      <div className="grid" style={{ gridTemplateColumns: 'minmax(230px, 300px) minmax(0, 1fr)', alignItems: 'start' }}>
+        <Card title="Groups" action={<Button variant="secondary" size="sm" icon="plus" onClick={() => setGroupModal(true)}>Create</Button>} bodyClassName="card__body--flush">
+          <div className="hairlines">
+            {groups.map((g) => {
+              const count = rules.filter((r) => r.groupId === g.id).length;
+              return (
+                <div
+                  key={g.id}
+                  className="row row--between row--nowrap"
+                  style={{
+                    padding: 'var(--s-2) var(--s-3)',
+                    background: g.id === group.id ? 'var(--c-primary-wash)' : 'transparent',
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => setActiveId(g.id)}
+                >
+                  <span className="stack stack--xtight" style={{ minWidth: 0 }}>
+                    <span className="row row--xtight">
+                      <span className="small strong truncate">{g.name}</span>
+                      {!g.enabled && <Badge tone="muted">Off</Badge>}
                     </span>
-                    <span className="micro mono faint nowrap">
-                      {group.enabledCount}/{group.ruleCount}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </Card>
-
-            <Card>
-              <CardHead
-                title={selectedGroup?.name ?? 'Rules'}
-                subtitle={selectedGroup?.description}
-                actions={
-                  <Badge tone={selectedGroup?.scope === 'scheduled' ? 'info' : 'neutral'}>
-                    {selectedGroup?.scope === 'scheduled' ? 'Runs on a schedule' : 'Runs at intake'}
-                  </Badge>
-                }
-              />
-
-              {!rules?.length ? (
-                <EmptyState
-                  icon="rules"
-                  title="No rules in this group"
-                  body="Add a rule to start routing cases automatically."
-                  action={{ label: 'Add rule', icon: 'plus', onClick: () => setWizardOpen(true) }}
-                />
-              ) : (
-                <div className="table-wrap">
-                  <table className="tbl">
-                    <thead>
-                      <tr>
-                        <th style={{ width: 54 }}>On</th>
-                        <th>Rule</th>
-                        <th>Criteria</th>
-                        <th>Action</th>
-                        <th className="tbl__right">Runs</th>
-                        <th className="tbl__right">Last run</th>
-                        <th style={{ width: 44 }} />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rules.map((rule) => (
-                        <tr key={rule.id}>
-                          <td>
-                            <input
-                              type="checkbox"
-                              className="toggle"
-                              checked={rule.enabled}
-                              onChange={() => toggle(rule)}
-                              aria-label={`Enable ${rule.name}`}
-                            />
-                          </td>
-                          <td>
-                            <span className="stack" style={{ gap: 1 }}>
-                              <span className="strong small">{rule.name}</span>
-                              <span className="micro faint">{rule.description}</span>
-                            </span>
-                          </td>
-                          <td>
-                            <span className="stack" style={{ gap: 1 }}>
-                              <span className="micro faint">
-                                Match {rule.matchType === 'all' ? 'all' : 'any'}
-                              </span>
-                              {rule.criteria.map((c) => (
-                                <span key={c.id} className="micro">
-                                  {describeCriterion(c)}
-                                </span>
-                              ))}
-                            </span>
-                          </td>
-                          <td>
-                            <span className="stack" style={{ gap: 1 }}>
-                              {rule.actions.map((a) => (
-                                <span key={a.id} className="micro">
-                                  {getRuleAction(a.actionId)?.label}
-                                  {a.value ? <span className="mono"> → {a.value}</span> : null}
-                                </span>
-                              ))}
-                            </span>
-                          </td>
-                          <td className="tbl__right mono small">{formatNumber(rule.runCount)}</td>
-                          <td className="tbl__right micro faint nowrap">
-                            {rule.lastRunAt ? relativeTime(rule.lastRunAt) : 'Never'}
-                          </td>
-                          <td>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setHistoryRule(rule)}
-                              aria-label={`History for ${rule.name}`}
-                              title="Rule history"
-                            >
-                              <Icon name="clock" size={15} />
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                    <span className="micro subtle">{g.triggeredBy} · {count} rules</span>
+                  </span>
+                  <span className="row row--xtight row--nowrap" onClick={(e) => e.stopPropagation()}>
+                    <IconButton
+                      icon="power"
+                      label={g.enabled ? 'Disable group' : 'Enable group'}
+                      size={13}
+                      onClick={() => setGroups((p) => p.map((x) => (x.id === g.id ? { ...x, enabled: !x.enabled } : x)))}
+                    />
+                    <IconButton icon="trash" label="Delete group" tone="danger" size={13} onClick={() => notify('Deleting a group needs the Delete Rule permission.', 'warning')} />
+                  </span>
                 </div>
-              )}
-            </Card>
+              );
+            })}
           </div>
-        )}
-      </AsyncBoundary>
+        </Card>
 
-      <AddRuleWizard
-        open={wizardOpen}
-        onClose={() => setWizardOpen(false)}
-        groups={groups ?? []}
-        defaultGroupId={selectedGroupId}
-        cases={allCases ?? []}
-        onCreated={async (rule) => {
-          try {
-            await createRule(rule);
-            notify(`Rule “${rule.name}” created.`, 'success');
-            setWizardOpen(false);
-            await Promise.all([reloadRules(), reloadGroups()]);
-          } catch (err) {
-            notify(err.message ?? 'Could not create the rule.', 'danger');
-          }
+        <div className="stack stack--tight">
+          <Card
+            title={`Rule creation logic — ${group.name}`}
+            action={<Button variant="secondary" size="sm" icon="edit">Edit group</Button>}
+          >
+            <div className="row" style={{ gap: 'var(--s-6)' }}>
+              <div><div className="t-section-label">Triggered by</div><div className="small strong">{group.triggeredBy}</div></div>
+              <div><div className="t-section-label">Status</div><Badge tone={group.enabled ? 'success' : 'muted'} dot>{group.enabled ? 'Active' : 'Inactive'}</Badge></div>
+              <div><div className="t-section-label">Rules</div><div className="small strong">{parentCount} ({subCount} sub-rules)</div></div>
+            </div>
+            <p className="small muted" style={{ marginTop: 'var(--s-3)' }}>{group.description}</p>
+          </Card>
+
+          <Card bodyClassName="card__body--flush">
+            <Toolbar>
+              <span className="t-section-label">Rules &amp; execution order</span>
+              <div className="row row--tight">
+                <ColumnToggle columns={columns} hidden={hidden} onChange={setHidden} />
+                <ExportButtons columns={visible} rows={ordered} name={`rules-${group.id}`} onCopied={(ok) => notify(ok ? 'Copied.' : 'Clipboard blocked.', ok ? 'success' : 'danger')} />
+                <Button variant="primary" size="sm" icon="plus" onClick={() => navigate(ROUTES.addRule)}>Add Rule</Button>
+              </div>
+            </Toolbar>
+
+            <DataTable
+              columns={visible}
+              rows={ordered}
+              rowKey={(r) => r.id}
+              rowDrag={{
+                draggingId,
+                blockIds: draggingId ? blockFor(groupRules, draggingId) : new Set(),
+                onDragStart: setDraggingId,
+                resolveDrop: (overId, edge) => resolveDrop(groupRules, draggingId, overId, edge),
+                onDrop: (overId, edge) => {
+                  setRules((p) => {
+                    const updated = applyDrop(groupRules, draggingId, overId, edge);
+                    const byId = new Map(updated.map((r) => [r.id, r]));
+                    return p.map((r) => byId.get(r.id) ?? r);
+                  });
+                  setDraggingId(null);
+                },
+              }}
+              empty={<EmptyState icon="rules" title="No rules in this group" hint="Add a rule to start routing cases automatically." />}
+            />
+
+            <div className="card__foot">
+              <Icon name="info" size={13} className="subtle" />
+              <span className="micro subtle">
+                Rules run top to bottom. A sub-rule only evaluates when its parent matches, and can be reordered
+                within its parent but not moved to another.
+              </span>
+            </div>
+          </Card>
+        </div>
+      </div>
+
+      <GroupModal
+        open={groupModal}
+        onClose={() => setGroupModal(false)}
+        onSave={(g) => {
+          setGroups((p) => [...p, { ...g, id: `rg${p.length + 1}`, enabled: true }]);
+          setGroupModal(false);
+          notify(`Group “${g.name}” created.`, 'success');
         }}
       />
-
-      <Drawer
-        open={Boolean(historyRule)}
-        onClose={() => setHistoryRule(null)}
-        title="Rule history"
-        subtitle={historyRule?.name}
-      >
-        {historyStatus === 'loading' ? (
-          <SkeletonRows rows={4} />
-        ) : history?.length ? (
-          <div className="timeline">
-            {history.map((entry) => (
-              <div key={entry.id} className="timeline__item">
-                <span className="timeline__marker" />
-                <div className="timeline__body">
-                  <span className="timeline__action">{entry.action}</span>
-                  <span className="timeline__meta">
-                    {entry.actor} · {formatDateTime(entry.at)}
-                  </span>
-                  <span className="timeline__detail">{entry.detail}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <EmptyState icon="clock" title="No recorded changes" body="This rule has not been edited since it was created." />
-        )}
-      </Drawer>
+      <HistoryModal rule={historyRule} onClose={() => setHistoryRule(null)} />
+      <ConfirmDialog
+        open={Boolean(confirmDelete)}
+        title="Delete rule"
+        message={<>Delete <strong>{confirmDelete?.name}</strong>? Any sub-rules beneath it are removed too.</>}
+        onCancel={() => setConfirmDelete(null)}
+        onConfirm={() => {
+          setRules((p) => p.filter((r) => r.id !== confirmDelete.id && r.parentId !== confirmDelete.id));
+          notify(`“${confirmDelete.name}” deleted.`, 'success');
+          setConfirmDelete(null);
+        }}
+      />
     </>
   );
 }

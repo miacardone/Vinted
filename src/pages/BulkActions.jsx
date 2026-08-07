@@ -1,354 +1,270 @@
 import { useMemo, useState } from 'react';
-import PageHeader from '@/components/layout/PageHeader';
-import Card, { CardBody, CardHead } from '@/components/ui/Card';
-import Button from '@/components/ui/Button';
+import { PageHeader, Card, Button, Stepper, EmptyState, Badge } from '@/components/ui/Surface';
+import { Modal } from '@/components/ui/Modal';
+import { DataTable } from '@/components/ui/DataTable';
+import { SelectField, TextField } from '@/components/ui/Form';
 import Icon from '@/components/ui/Icon';
-import Stepper from '@/components/ui/Stepper';
-import { Select, Textarea } from '@/components/ui/Field';
-import { EmptyState, SkeletonRows } from '@/components/ui/Feedback';
-import { CaseTypeBadge, StatusBadge } from '@/components/ui/Badge';
-import CriteriaBuilder from '@/components/rules/CriteriaBuilder';
-import { useAsync } from '@/hooks/useAsync';
+import { CRITERIA_CATEGORIES, RULE_ACTION_OPTIONS, categoryOptions, describeCriterion, getCategory, getRuleAction, matchCases } from '@/domain/criteria';
+import { BULK_ACTION_HISTORY } from '@/data/admin';
+import { CASES } from '@/data/cases';
+import brand from '@/brand/brand.config';
+import { ASSIGN_SKILLS, ASSIGN_USERS } from '@/data/work-case';
 import { useToast } from '@/context/ToastContext';
-import { bulkUpdateCases, listAllCases } from '@/services/cases.service';
-import { listBulkActionHistory, recordBulkAction } from '@/services/admin.service';
-import { describeCriterion, matchCases } from '@/domain/criteria';
-import { STATUSES } from '@/domain/statuses';
-import { ASSIGNABLE_ANALYSTS } from '@/data/users.seed';
-import { useBrand } from '@/brand/BrandProvider';
-import { formatDateTime, formatMoney, formatNumber, pluralise } from '@/utils/format';
+import { formatCurrency, formatDateTime, formatNumber } from '@/utils/format';
 
-const STEPS = [
-  { id: 'criteria', label: 'Criteria' },
-  { id: 'actions', label: 'Actions' },
-  { id: 'review', label: 'Review' },
-];
+/**
+ * Bulk actions — the same three-step flow as Add rule, but as a POPOUT MODAL
+ * rather than a full page, because a bulk action is a one-off operation rather
+ * than a saved object.
+ *
+ * The live match count runs against the real book at every step, so the number
+ * in Review is exactly what will change.
+ */
+
+const STEPS = ['Criteria', 'Actions', 'Review'];
 
 export function BulkActions() {
-  const brand = useBrand();
   const { notify } = useToast();
 
-  const [started, setStarted] = useState(false);
+  const [history, setHistory] = useState(BULK_ACTION_HISTORY);
+  const [open, setOpen] = useState(false);
   const [step, setStep] = useState(0);
+  const [activeCategory, setActiveCategory] = useState(CRITERIA_CATEGORIES[0].key);
   const [criteria, setCriteria] = useState([]);
-  const [matchType, setMatchType] = useState('all');
-  const [queueId, setQueueId] = useState('');
-  const [assigneeId, setAssigneeId] = useState('');
-  const [statusValue, setStatusValue] = useState('');
-  const [reasonId, setReasonId] = useState('');
-  const [note, setNote] = useState('');
-  const [applying, setApplying] = useState(false);
+  const [actions, setActions] = useState([]);
+  const [label, setLabel] = useState('');
 
-  const { data: cases, status } = useAsync(listAllCases, []);
-  const { data: history, run: reloadHistory } = useAsync(listBulkActionHistory, []);
+  const matched = useMemo(() => matchCases(CASES, criteria, 'all'), [criteria]);
+  const exposure = matched.reduce((s, c) => s + c.disputeAmount, 0);
 
-  /**
-   * The live match count. Recomputed on every criteria change against the real
-   * book — the number in the review step is exactly what will be changed, not
-   * an estimate.
-   */
-  const matched = useMemo(
-    () => (cases ? matchCases(cases, criteria, matchType) : []),
-    [cases, criteria, matchType],
-  );
+  const category = getCategory(activeCategory);
+  const current = criteria.find((c) => c.key === activeCategory);
 
-  const totalExposure = matched.reduce((sum, c) => sum + c.amount, 0);
+  const reset = () => { setStep(0); setCriteria([]); setActions([]); setLabel(''); };
 
-  const hasAction = Boolean(queueId || assigneeId || statusValue);
-  const reasonMissing = Boolean(assigneeId) && !reasonId;
-
-  const reset = () => {
-    setStarted(false);
-    setStep(0);
-    setCriteria([]);
-    setQueueId('');
-    setAssigneeId('');
-    setStatusValue('');
-    setReasonId('');
-    setNote('');
+  const setChip = (value) => {
+    setCriteria((prev) => {
+      const existing = prev.find((c) => c.key === activeCategory);
+      if (!existing) return [...prev, { key: activeCategory, values: [value] }];
+      const values = existing.values.includes(value) ? existing.values.filter((v) => v !== value) : [...existing.values, value];
+      return values.length ? prev.map((c) => (c.key === activeCategory ? { ...c, values } : c)) : prev.filter((c) => c.key !== activeCategory);
+    });
   };
 
-  const apply = async () => {
-    setApplying(true);
-    try {
-      const changes = {};
-      if (queueId) {
-        changes.queueId = queueId;
-        changes.queueLabel = brand.queues.find((q) => q.id === queueId)?.label;
-      }
-      if (assigneeId) {
-        const analyst = ASSIGNABLE_ANALYSTS.find((a) => a.id === assigneeId);
-        changes.assigneeId = assigneeId;
-        changes.assigneeName = analyst?.name ?? null;
-        changes.assigneeInitials = analyst?.initials ?? null;
-        changes.assignmentReasonId = reasonId;
-      }
-      if (statusValue) changes.status = statusValue;
-
-      const result = await bulkUpdateCases(matched.map((c) => c.id), changes);
-      await recordBulkAction({
-        name: note.trim() || `Bulk action on ${matched.length} cases`,
-        matched: matched.length,
-        applied: result.applied,
-      });
-
-      notify(`${pluralise(result.applied, 'case')} updated.`, 'success');
-      await reloadHistory();
-      reset();
-    } catch (err) {
-      notify(err.message ?? 'Bulk action failed.', 'danger');
-    } finally {
-      setApplying(false);
-    }
+  const setOperator = (patch) => {
+    setCriteria((prev) => {
+      const existing = prev.find((c) => c.key === activeCategory);
+      const next = { key: activeCategory, operator: category.operators[0], value: '', ...existing, ...patch };
+      return existing ? prev.map((c) => (c.key === activeCategory ? next : c)) : [...prev, next];
+    });
   };
 
-  if (status === 'loading') return <SkeletonRows rows={6} />;
+  const apply = () => {
+    const record = {
+      id: `ba${Date.now()}`,
+      name: label.trim() || `Bulk action on ${matched.length} cases`,
+      runAt: new Date().toISOString(),
+      runBy: 'you',
+      matched: matched.length,
+      applied: matched.length,
+      status: 'Completed',
+    };
+    setHistory((p) => [record, ...p]);
+    notify(`${formatNumber(matched.length)} cases updated.`, 'success');
+    setOpen(false);
+    reset();
+  };
+
+  const historyColumns = [
+    { key: 'name', header: 'Action', fw: 16, cell: (r) => <span className="small strong">{r.name}</span> },
+    { key: 'runBy', header: 'Run by', fw: 10, cell: (r) => <span className="small mono">{r.runBy}</span> },
+    { key: 'matched', header: 'Matched', fw: 6, align: 'right', cell: (r) => <span className="mono small">{formatNumber(r.matched)}</span> },
+    { key: 'applied', header: 'Applied', fw: 6, align: 'right', cell: (r) => <span className="mono small">{formatNumber(r.applied)}</span> },
+    { key: 'status', header: 'Status', fw: 6, cell: (r) => <Badge tone="success">{r.status}</Badge> },
+    { key: 'runAt', header: 'When', fw: 9, align: 'right', cell: (r) => <span className="micro subtle nowrap">{formatDateTime(r.runAt)}</span> },
+  ];
+
+  const canNext = (step === 0 && criteria.length > 0) || (step === 1 && actions.length > 0) || step === 2;
 
   return (
     <>
       <PageHeader
         title="Bulk actions"
-        subtitle="Build a criteria set, see exactly how many cases it selects, then apply one change to all of them."
-        actions={
-          started ? (
-            <Button variant="ghost" onClick={reset}>
-              Discard
-            </Button>
-          ) : (
-            <Button variant="primary" icon="plus" onClick={() => setStarted(true)}>
-              New bulk action
-            </Button>
-          )
-        }
+        description="Build a criteria set, see exactly how many cases it selects, then apply one change to all of them."
+        actions={<Button variant="primary" icon="plus" onClick={() => { reset(); setOpen(true); }}>New bulk action</Button>}
       />
 
-      {!started ? (
-        <div className="stack">
+      <div className="stack">
+        {history.length === 0 ? (
           <Card>
             <EmptyState
-              icon="layers"
-              title="No bulk action in progress"
-              body="Bulk actions change many cases at once — routing a whole reason code to a different queue, or reassigning an analyst's book when they go on leave. You will see the exact match count before anything is applied."
-              action={{ label: 'New bulk action', icon: 'plus', onClick: () => setStarted(true) }}
+              icon="checklist"
+              title="No bulk actions yet"
+              hint="Bulk actions change many cases at once — routing a whole reason code to a different queue, or reassigning an analyst's book. You always see the match count before anything is applied."
+              action={<Button variant="primary" icon="plus" onClick={() => setOpen(true)}>New bulk action</Button>}
             />
           </Card>
+        ) : (
+          <Card title="Recent bulk actions" bodyClassName="card__body--flush">
+            <DataTable columns={historyColumns} rows={history} rowKey={(r) => r.id} />
+          </Card>
+        )}
+      </div>
 
-          {history?.length > 0 && (
-            <Card>
-              <CardHead title="Recent bulk actions" />
-              <div className="table-wrap">
-                <table className="tbl">
-                  <thead>
-                    <tr>
-                      <th>Action</th>
-                      <th>Run by</th>
-                      <th className="tbl__right">Matched</th>
-                      <th className="tbl__right">Applied</th>
-                      <th className="tbl__right">When</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {history.map((entry) => (
-                      <tr key={entry.id}>
-                        <td className="strong small">{entry.name}</td>
-                        <td className="small">{entry.runBy}</td>
-                        <td className="tbl__right mono">{formatNumber(entry.matched)}</td>
-                        <td className="tbl__right mono">{formatNumber(entry.applied)}</td>
-                        <td className="tbl__right micro faint nowrap">{formatDateTime(entry.runAt)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          )}
-        </div>
-      ) : (
-        <Card>
-          <Stepper steps={STEPS} current={step} onStepClick={setStep} />
-
-          <CardBody>
-            {step === 0 && (
-              <div className="stack">
-                <CriteriaBuilder
-                  criteria={criteria}
-                  onChange={setCriteria}
-                  cases={cases ?? []}
-                  matchType={matchType}
-                  onMatchTypeChange={setMatchType}
-                />
-              </div>
-            )}
-
-            {step === 1 && (
-              <div className="stack" style={{ maxWidth: 460 }}>
-                <p className="small muted">Leave a field blank to leave it unchanged.</p>
-
-                <Select
-                  label={`Route to ${brand.terms.queue}`}
-                  value={queueId}
-                  onChange={(e) => setQueueId(e.target.value)}
-                  placeholder="Leave unchanged"
-                  options={brand.queues.map((q) => ({ value: q.id, label: q.label }))}
-                />
-
-                <Select
-                  label="Assign to"
-                  value={assigneeId}
-                  onChange={(e) => setAssigneeId(e.target.value)}
-                  placeholder="Leave unchanged"
-                  options={ASSIGNABLE_ANALYSTS.map((a) => ({ value: a.id, label: a.name }))}
-                />
-
-                {assigneeId && (
-                  <Select
-                    label="Assignment reason"
-                    value={reasonId}
-                    onChange={(e) => setReasonId(e.target.value)}
-                    placeholder="Select a reason…"
-                    options={brand.assignmentReasons.map((r) => ({ value: r.id, label: r.label }))}
-                    hint={reasonMissing ? 'Required when changing the assignee.' : undefined}
-                  />
-                )}
-
-                <Select
-                  label="Set status"
-                  value={statusValue}
-                  onChange={(e) => setStatusValue(e.target.value)}
-                  placeholder="Leave unchanged"
-                  options={STATUSES.map((s) => ({ value: s.id, label: s.label }))}
-                />
-
-                <Textarea
-                  label="Label this action"
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  rows={2}
-                  placeholder="Shown in the bulk action history."
-                />
-              </div>
-            )}
-
-            {step === 2 && (
-              <div className="stack">
-                <div
-                  className="row row--between"
-                  style={{
-                    padding: 'var(--s-4)',
-                    background: matched.length ? 'var(--c-primary-wash)' : 'var(--c-warning-tint)',
-                    borderRadius: 'var(--r-md)',
-                  }}
-                >
-                  <div className="stack" style={{ gap: 2 }}>
-                    <span className="eyebrow">Cases affected</span>
-                    <span className="kpi__value">{formatNumber(matched.length)}</span>
-                    <span className="micro faint">of {formatNumber(cases?.length ?? 0)} in the book</span>
-                  </div>
-                  <div className="stack" style={{ gap: 2, textAlign: 'right' }}>
-                    <span className="eyebrow">Total exposure</span>
-                    <span className="kpi__value">{formatMoney(totalExposure)}</span>
-                  </div>
-                </div>
-
-                <div className="stack stack--tight">
-                  <span className="eyebrow">Criteria</span>
-                  <ul className="small muted" style={{ margin: 0, paddingLeft: 'var(--s-5)' }}>
-                    {criteria.map((c) => (
-                      <li key={c.id}>{describeCriterion(c)}</li>
-                    ))}
-                  </ul>
-                  <span className="micro faint">Matching {matchType === 'all' ? 'all' : 'any'} of the above.</span>
-                </div>
-
-                <div className="stack stack--tight">
-                  <span className="eyebrow">Changes</span>
-                  <ul className="small" style={{ margin: 0, paddingLeft: 'var(--s-5)' }}>
-                    {queueId && <li>Route to {brand.queues.find((q) => q.id === queueId)?.label}</li>}
-                    {assigneeId && (
-                      <li>
-                        Assign to {ASSIGNABLE_ANALYSTS.find((a) => a.id === assigneeId)?.name} (
-                        {brand.assignmentReasons.find((r) => r.id === reasonId)?.label})
-                      </li>
-                    )}
-                    {statusValue && <li>Set status to {STATUSES.find((s) => s.id === statusValue)?.label}</li>}
-                  </ul>
-                </div>
-
-                {matched.length > 0 && (
-                  <div className="stack stack--tight">
-                    <span className="eyebrow">Sample of affected cases</span>
-                    <div className="table-wrap">
-                      <table className="tbl">
-                        <thead>
-                          <tr>
-                            <th>Case</th>
-                            <th>Type</th>
-                            <th>Reason</th>
-                            <th>Status</th>
-                            <th className="tbl__right">Amount</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {matched.slice(0, 6).map((c) => (
-                            <tr key={c.id}>
-                              <td className="mono small">{c.id}</td>
-                              <td>
-                                <CaseTypeBadge caseType={c.caseType} short />
-                              </td>
-                              <td className="small truncate">{c.reasonLabel}</td>
-                              <td>
-                                <StatusBadge status={c.status} />
-                              </td>
-                              <td className="tbl__right mono small">{formatMoney(c.amount, c.currency)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    {matched.length > 6 && (
-                      <span className="micro faint">
-                        …and {formatNumber(matched.length - 6)} more.
-                      </span>
-                    )}
-                  </div>
-                )}
-
-                {matched.length === 0 && (
-                  <p className="small" style={{ color: 'var(--c-warning)' }}>
-                    <Icon name="alert" size={13} /> These criteria match no cases. Go back and widen them.
-                  </p>
-                )}
-              </div>
-            )}
-          </CardBody>
-
-          <footer className="card__foot">
-            {/* The live count follows the operator through every step, so scope
-                is never a surprise at the end. */}
-            <span className="small">
-              <strong className="mono">{formatNumber(matched.length)}</strong> case
-              {matched.length === 1 ? '' : 's'} match
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Bulk action"
+        size="xl"
+        footer={
+          <>
+            <span className="small muted" style={{ marginRight: 'auto' }}>
+              <strong className="mono">{formatNumber(matched.length)}</strong> case{matched.length === 1 ? '' : 's'} match
             </span>
-            <span className="spacer" />
-            <Button variant="ghost" onClick={() => (step === 0 ? reset() : setStep(step - 1))} disabled={applying}>
+            <Button variant="secondary" onClick={() => (step === 0 ? setOpen(false) : setStep(step - 1))}>
               {step === 0 ? 'Cancel' : 'Back'}
             </Button>
             {step < 2 ? (
-              <Button
-                variant="primary"
-                onClick={() => setStep(step + 1)}
-                disabled={(step === 0 && criteria.length === 0) || (step === 1 && (!hasAction || reasonMissing))}
-              >
-                Continue
-              </Button>
+              <Button variant="primary" disabled={!canNext} onClick={() => setStep(step + 1)}>Continue</Button>
             ) : (
-              <Button variant="primary" onClick={apply} disabled={!matched.length || !hasAction || applying}>
-                {applying ? 'Applying…' : `Apply to ${formatNumber(matched.length)} cases`}
-              </Button>
+              <Button variant="primary" disabled={!matched.length} onClick={apply}>Apply to {formatNumber(matched.length)} cases</Button>
             )}
-          </footer>
-        </Card>
-      )}
+          </>
+        }
+      >
+        <div className="stack">
+          <Stepper steps={STEPS} current={step} />
+
+          {step === 0 && (
+            <div className="grid" style={{ gridTemplateColumns: '190px minmax(0, 1fr)', alignItems: 'start' }}>
+              <div className="stack stack--xtight">
+                {CRITERIA_CATEGORIES.map((c) => {
+                  const count = criteria.find((x) => x.key === c.key)?.values?.length ?? (criteria.some((x) => x.key === c.key) ? 1 : 0);
+                  return (
+                    <button
+                      key={c.key}
+                      type="button"
+                      className={`popover__item ${activeCategory === c.key ? 'is-active' : ''}`.trim()}
+                      style={activeCategory === c.key ? { background: 'var(--c-primary-tint)', color: 'var(--c-primary-deep)', fontWeight: 600 } : undefined}
+                      onClick={() => setActiveCategory(c.key)}
+                    >
+                      {c.label}
+                      {count > 0 && <span className="popover__count">{count}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="stack stack--tight">
+                <p className="small muted">{category.hint}</p>
+                {category.type === 'chips' ? (
+                  <div className="row row--tight">
+                    {categoryOptions(activeCategory).map((opt) => {
+                      const on = current?.values?.map(String).includes(String(opt.value));
+                      return (
+                        <button key={String(opt.value)} type="button" className={`chip chip--toggle ${on ? 'is-on' : ''}`.trim()} onClick={() => setChip(opt.value)}>
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="row row--tight">
+                    <SelectField label="Operator" value={current?.operator ?? category.operators[0]} onChange={(e) => setOperator({ operator: e.target.value })} options={category.operators.map((o) => ({ value: o, label: o }))} />
+                    <TextField label="Value" type={category.valueType === 'number' ? 'number' : 'text'} value={current?.value ?? ''} onChange={(e) => setOperator({ value: e.target.value })} placeholder={category.placeholder} />
+                  </div>
+                )}
+
+                <div className="chip-area">
+                  {criteria.length === 0 ? <span className="small subtle">No criteria yet.</span> : (
+                    <div className="row row--tight">
+                      {criteria.map((c) => (
+                        <span key={c.key} className="chip">
+                          {describeCriterion(c)}
+                          <button type="button" className="chip__remove" onClick={() => setCriteria((p) => p.filter((x) => x.key !== c.key))} aria-label="Remove"><Icon name="close" size={11} /></button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {step === 1 && (
+            <div className="stack stack--tight">
+              <div className="row row--tight">
+                {RULE_ACTION_OPTIONS.map((a) => (
+                  <button
+                    key={a.key}
+                    type="button"
+                    className={`chip chip--toggle ${actions.some((x) => x.key === a.key) ? 'is-on' : ''}`.trim()}
+                    onClick={() => setActions((p) => (p.some((x) => x.key === a.key) ? p.filter((x) => x.key !== a.key) : [...p, { key: a.key, value: null }]))}
+                  >
+                    {a.label}
+                  </button>
+                ))}
+              </div>
+
+              {actions.filter((a) => getRuleAction(a.key)?.valueType !== 'none').map((a) => {
+                const spec = getRuleAction(a.key);
+                const options = spec.valueType === 'queue' ? brand.queues.map((q) => ({ value: q.id, label: q.label }))
+                  : spec.valueType === 'user' ? ASSIGN_USERS.map((u) => ({ value: u, label: u }))
+                    : ASSIGN_SKILLS.map((s) => ({ value: s, label: s }));
+                return (
+                  <SelectField
+                    key={a.key}
+                    label={spec.label}
+                    value={a.value ?? ''}
+                    onChange={(e) => setActions((p) => p.map((x) => (x.key === a.key ? { ...x, value: e.target.value } : x)))}
+                    placeholder={`Select a ${spec.valueType}…`}
+                    options={options}
+                  />
+                );
+              })}
+
+              <TextField label="Label this action" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Shown in the bulk action history" />
+            </div>
+          )}
+
+          {step === 2 && (
+            <div className="stack stack--tight">
+              <div className="row row--between" style={{ padding: 'var(--s-3)', background: matched.length ? 'var(--c-primary-wash)' : 'var(--c-warning-tint)', borderRadius: 'var(--r-md)' }}>
+                <div><div className="t-section-label">Cases affected</div><div className="kpi__value">{formatNumber(matched.length)}</div></div>
+                <div style={{ textAlign: 'right' }}><div className="t-section-label">Total exposure</div><div className="kpi__value">{formatCurrency(exposure)}</div></div>
+              </div>
+
+              <div><span className="t-section-label">Criteria</span>
+                <ul className="small muted" style={{ margin: '4px 0 0', paddingLeft: 'var(--s-5)' }}>
+                  {criteria.map((c) => <li key={c.key}>{describeCriterion(c)}</li>)}
+                </ul>
+              </div>
+
+              <div><span className="t-section-label">Actions</span>
+                <ul className="small" style={{ margin: '4px 0 0', paddingLeft: 'var(--s-5)' }}>
+                  {actions.map((a) => <li key={a.key}>{getRuleAction(a.key)?.label}{a.value ? ` → ${a.value}` : ''}</li>)}
+                </ul>
+              </div>
+
+              {matched.length > 0 && (
+                <div>
+                  <span className="t-section-label">Sample</span>
+                  <DataTable
+                    columns={[
+                      { key: 'id', header: 'Case #', fw: 8, cell: (r) => <span className="mono small">{r.id}</span> },
+                      { key: 'reasonLabel', header: 'Reason', fw: 14, cell: (r) => <span className="small truncate">{r.reasonLabel}</span> },
+                      { key: 'disputeAmount', header: 'Amount', fw: 6, align: 'right', cell: (r) => <span className="mono small">{formatCurrency(r.disputeAmount, r.currency)}</span> },
+                    ]}
+                    rows={matched.slice(0, 5)}
+                    rowKey={(r) => r.id}
+                  />
+                  {matched.length > 5 && <span className="micro subtle">…and {formatNumber(matched.length - 5)} more.</span>}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </Modal>
     </>
   );
 }
