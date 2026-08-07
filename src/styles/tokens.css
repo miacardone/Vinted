@@ -40,12 +40,12 @@
   --c-scheme-amex: #016fd0;
 
   /* Validated categorical ramp — see brand.config.js for why this order */
-  --c-series-0: #008c99;
-  --c-series-1: #b3261e;
-  --c-series-2: #3f51b5;
-  --c-series-3: #9a5b00;
-  --c-series-4: #a5348f;
-  --c-series-5: #0f7b4f;
+  --c-series-0: #007782;
+  --c-series-1: #00a0ad;
+  --c-series-2: #6fc5c9;
+  --c-series-3: #b9e0e1;
+  --c-series-4: #04343a;
+  --c-series-contrast: #b3261e;
   --c-series-neutral: #6b7f82;
 
   /* Type */

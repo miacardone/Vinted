@@ -20,9 +20,9 @@ function Section({ title, data, series, totalsLabel, children, xLabel, yLabel })
   ];
 
   return (
-    <Card title={title}>
-      <BarChart data={data} series={series} xLabel={xLabel} yLabel={yLabel} />
-      <div style={{ marginTop: 'var(--s-4)' }}>
+    <Card title={title} bodyClassName="card__body--chart">
+      <BarChart data={data} series={series} xLabel={xLabel} yLabel={yLabel} height={200} />
+      <div style={{ marginTop: 'var(--s-3)' }}>
         <DataTable columns={columns} rows={totals} rowKey={(r) => r.key} density="fit" />
       </div>
       {children}

@@ -117,19 +117,20 @@ export const vintedBrand = {
     schemeAmex: '#016FD0',
   },
 
-  /* --- Chart ramp -------------------------------------------------------- *
-   * VALIDATED, NOT EYEBALLED. Passes all five palette checks against a white
-   * chart surface: lightness band, chroma floor, CVD separation on every
-   * adjacent pair, the normal-vision floor, and 3:1 contrast.
+  /* --- Chart ramp ------------------------------------------------------- *
+   * ONE HUE PLUS TINTS, not a rainbow. Five steps of the brand teal from the
+   * deep rail colour to a pale tint, plus a single contrast colour reserved
+   * for the "other" bucket and for negative series (rejected, lost, failed).
    *
-   * Two constraints shaped it, both load-bearing:
-   *  1. Brand teal #007782 and nav-active #00A0AD separate by only ΔE 12.6 to
-   *     normal vision — unreadable as adjacent slices. The chart teal is a
-   *     saturated sibling; the brand reads through the chrome, not the data.
-   *  2. Green and amber are never adjacent — they collapse to ΔE 7.3 under
-   *     protanopia. The ordering encodes that.
-   * Assign in fixed order, never cycle. A 7th category folds into "Other". */
-  chartSeries: ['#008C99', '#B3261E', '#3F51B5', '#9A5B00', '#A5348F', '#0F7B4F'],
+   * Separation here comes from LIGHTNESS rather than hue, which is why a
+   * single-hue ramp survives colour-vision deficiency and greyscale printing
+   * at least as well as the multi-hue ramp it replaced — the steps stay
+   * distinguishable when hue information is removed entirely.
+   *
+   * Assign in fixed order and never cycle. A sixth category folds into
+   * "Other" and takes chartContrast. */
+  chartSeries: ['#007782', '#00A0AD', '#6FC5C9', '#B9E0E1', '#04343A'],
+  chartContrast: '#B3261E',
   chartNeutral: '#6B7F82',
 
   /* --- Money, locale, markets ------------------------------------------- */
@@ -312,8 +313,9 @@ export const pricelineBrand = {
     lineStrong: '#C3CDDA',
   },
 
-  /** Independently validated — same five checks, same rules. */
-  chartSeries: ['#1565C0', '#B3261E', '#008C99', '#9A5B00', '#7B4FA8', '#0F7B4F'],
+  /** Same single-hue-plus-tints rule, in this tenant's own blue. */
+  chartSeries: ['#0F4C99', '#3E8FE0', '#84B6EC', '#C7DDF6', '#0B1F3B'],
+  chartContrast: '#B3261E',
   chartNeutral: '#6E7C8C',
 
   currency: 'USD',

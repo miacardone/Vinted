@@ -61,53 +61,49 @@ export function Dashboard() {
 
       <div className="stack">
         {/* Row 1 — full-width stacked bar */}
-        <Card title="Case Activity Per Week" action={<RangeChip value={range} onChange={setRange} />}>
+        <Card title="Case Activity Per Week" action={<RangeChip value={range} onChange={setRange} />} bodyClassName="card__body--chart">
           <BarChart
             data={activity}
-            xLabel="Week"
-            yLabel="Cases"
+            height={200}
             series={[
               { key: 'completed', name: 'Completed' },
               { key: 'represented', name: 'Represented' },
               { key: 'open', name: 'Open' },
               { key: 'expired', name: 'Expired' },
-              { key: 'rejected', name: 'Rejected' },
+              { key: 'rejected', name: 'Rejected', color: 'var(--c-series-contrast)' },
             ]}
           />
         </Card>
 
-        {/* Row 2 — two square donut cards */}
+        {/* Row 2 — two compact donut cards side by side */}
         <div className="grid grid--2">
-          {donuts.map((d, i) => (
+          {donuts.map((d) => (
             <Card
               key={d.scheme.id}
-              className="card--square"
               title={`${d.scheme.label} Reason Codes`}
               action={<Badge tone="neutral">{formatNumber(d.total)} cases</Badge>}
+              bodyClassName="card__body--chart"
             >
-              <div className="row" style={{ justifyContent: 'center', height: '100%', alignItems: 'center' }}>
-                <Donut
-                  data={d.slices}
-                  centreValue={formatNumber(d.total)}
-                  centreLabel={d.scheme.label}
-                  colorOffset={i * 2}
-                  size={200}
-                />
-              </div>
+              <Donut
+                data={d.slices}
+                centreValue={formatNumber(d.total)}
+                centreLabel={d.scheme.label}
+                size={150}
+              />
             </Card>
           ))}
         </div>
 
         {/* Row 3 — full-width area */}
-        <Card title="New Cases Per Day" action={<RangeChip value={range} onChange={setRange} />}>
-          <AreaChart data={daily} xLabel="Day" yLabel="New cases" />
+        <Card title="New Cases Per Day" action={<RangeChip value={range} onChange={setRange} />} bodyClassName="card__body--chart">
+          <AreaChart data={daily} height={165} />
         </Card>
 
         {/* Row 4 — analyst activity table */}
         <Card title={`${brand.terms.analyst} activity`} bodyClassName="card__body--flush">
           <DataTable
             columns={analystColumns}
-            rows={analysts}
+            rows={analysts.slice(0, 6)}
             rowKey={(r) => r.email}
             density="comfortable"
           />

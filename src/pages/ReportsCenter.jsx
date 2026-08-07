@@ -38,26 +38,38 @@ export function ReportsCenter() {
 
       <div className="stack">
         <div className="grid grid--2">
-          <Card title="Cases by Due Date Per Week">
+          <Card title="Cases by Due Date Per Week" bodyClassName="card__body--chart">
             <BarChart
               data={byWeek}
               xLabel="Week due"
               yLabel="Open cases"
               series={[{ key: 'chargeback', name: brand.terms.chargebacks }, { key: 'claim', name: brand.terms.claims }]}
+              height={220}
             />
           </Card>
 
-          <Card title="New Cases Per Day">
-            <AreaChart data={daily} xLabel="Day" yLabel="New cases" />
+          <Card title="New Cases Per Day" bodyClassName="card__body--chart">
+            <AreaChart data={daily} xLabel="Day" yLabel="New cases" height={220} />
           </Card>
         </div>
 
-        <Card title="Entity Case Totals by Due Date">
+        <Card title="Entity Case Totals by Due Date" bodyClassName="card__body--chart">
           <BarChart
             data={byEntity}
             xLabel="Entity"
             yLabel="Open cases"
-            series={DUE_BUCKETS.map((b) => ({ key: b.id, name: b.label }))}
+            /* Seven ordered buckets against a five-step ramp would cycle
+               colours. Mapping them as an urgency ramp instead — contrast for
+               past due, the teal steps through the near dates, neutral for the
+               residual 5+ — keeps every series distinct and reads as a scale. */
+            series={DUE_BUCKETS.map((b, i) => ({
+              key: b.id,
+              name: b.label,
+              color: b.id === 'pastDue' ? 'var(--c-series-contrast)'
+                : b.id === 'd5plus' ? 'var(--c-series-neutral)'
+                  : `var(--c-series-${i - 1})`,
+            }))}
+            height={220}
           />
         </Card>
 

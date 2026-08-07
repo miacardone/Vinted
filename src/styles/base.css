@@ -78,6 +78,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* ---------- Layout helpers ---------- */
 
 .stack { display: flex; flex-direction: column; gap: var(--s-4); }
+.stack--dense { gap: var(--s-4); }
 .stack--tight { gap: var(--s-2); }
 .stack--xtight { gap: var(--s-1); }
 .stack--loose { gap: var(--s-6); }
@@ -92,6 +93,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .spacer { flex: 1; }
 
 .grid { display: grid; gap: var(--s-4); }
+.grid--dense { gap: var(--s-4); }
 .grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .grid--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }

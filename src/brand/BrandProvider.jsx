@@ -25,6 +25,7 @@ export function BrandProvider({ brand = brandConfig, children }) {
       root.style.setProperty(`--c-series-${i}`, value);
     });
     root.style.setProperty('--c-series-neutral', brand.chartNeutral);
+    root.style.setProperty('--c-series-contrast', brand.chartContrast);
 
     root.dataset.tenant = brand.id;
     document.title = `${brand.name} ${brand.productName}`;

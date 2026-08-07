@@ -148,17 +148,18 @@
 }
 .card__head {
   display: flex; align-items: center; justify-content: space-between; gap: var(--s-3);
-  padding: var(--s-3) var(--s-4); border-bottom: 1px solid var(--c-line); flex: none;
+  padding: 10px var(--s-4); border-bottom: 1px solid var(--c-line); flex: none;
 }
-.card__title { font-family: var(--font-display); font-size: var(--fs-h3); font-weight: 700; }
+.card__title { font-family: var(--font-display); font-size: 14px; font-weight: 700; }
 .card__body { padding: var(--s-4); flex: 1; min-width: 0; }
+.card__body--chart { padding: var(--s-3) var(--s-4) var(--s-4); }
 .card__body--flush { padding: 0; }
 .card__body--tight { padding: var(--s-3); }
 .card__foot { padding: var(--s-3) var(--s-4); border-top: 1px solid var(--c-line); display: flex; align-items: center; gap: var(--s-2); }
 
-/* Square chart cards — the two dashboard donuts hold a 1:1 aspect */
-.card--square { aspect-ratio: 1 / 1; }
-@media (max-width: 900px) { .card--square { aspect-ratio: auto; } }
+/* Donut cards are content-driven — no forced aspect ratio leaving the donut
+   floating in whitespace. */
+.donut { display: flex; flex-direction: column; align-items: center; gap: var(--s-1); }
 
 /* ---------- Toolbar ---------- */
 
@@ -545,19 +546,19 @@
 
 .chart { display: block; width: 100%; overflow: visible; }
 .chart__grid { stroke: var(--c-line); stroke-width: 1; }
-.chart__axis { fill: var(--c-ink-subtle); font-size: 10px; font-family: var(--font-mono); }
-.chart__axis-title { fill: var(--c-ink-muted); font-size: 11px; font-weight: 500; font-family: var(--font-body); }
+.chart__axis { fill: var(--c-ink-subtle); font-size: 11px; font-family: var(--font-body); }
+.chart__axis-title { fill: var(--c-ink-subtle); font-size: 10px; font-weight: 500; font-family: var(--font-body); }
 .chart__baseline { stroke: var(--c-line-strong); stroke-width: 1; }
 .chart__line { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .chart__dot { stroke: var(--c-surface); stroke-width: 2; }
 .chart-frame { position: relative; }
 
-.legend { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s-2) var(--s-4); font-size: var(--fs-micro); color: var(--c-ink-muted); }
+.legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 5px var(--s-3); margin-top: var(--s-2); font-size: 11px; color: var(--c-ink-muted); }
 .legend__item { display: inline-flex; align-items: center; gap: 5px; }
-.legend__swatch { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.legend__swatch { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 
-.donut-centre__value { font-family: var(--font-mono); font-size: 20px; font-weight: 600; fill: var(--c-primary); }
-.donut-centre__label { font-size: 10px; fill: var(--c-ink-subtle); }
+.donut-centre__value { font-family: var(--font-mono); font-size: 17px; font-weight: 600; fill: var(--c-primary); }
+.donut-centre__label { font-size: 9px; fill: var(--c-ink-subtle); }
 
 /* ---------- KPI ---------- */
 
