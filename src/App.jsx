@@ -9,6 +9,7 @@ import { ROUTES } from '@/data/navigation';
 import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
 import Placeholder from '@/pages/Placeholder';
+import CaseManagement from '@/pages/CaseManagement';
 
 /**
  * Routing follows our edited IA (data/navigation.js): no Case priority, no
@@ -37,7 +38,7 @@ export function App() {
 
                 <Route path={ROUTES.assignmentReasons} element={<Placeholder title="Assignment reasons" description="Reasons recorded whenever a case changes hands." icon="tag" />} />
                 <Route path={ROUTES.queueManagement} element={<Placeholder title="Queue management" description="Queues, service targets and live depth." icon="inbox" />} />
-                <Route path={ROUTES.caseManagement} element={<Placeholder title="Case management" description="Every case in one queue." icon="table" />} />
+                <Route path={ROUTES.caseManagement} element={<CaseManagement />} />
                 <Route path={ROUTES.uploadCases} element={<Placeholder title="Upload cases" description="Import cases from CSV." icon="upload" />} />
 
                 <Route path={ROUTES.workCase} element={<Placeholder title="Work case" description="Your workable cases." icon="briefcase" />} />
