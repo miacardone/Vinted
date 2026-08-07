@@ -15,6 +15,12 @@ import RuleGroups from '@/pages/RuleGroups';
 import AddRule from '@/pages/AddRule';
 import BulkActions from '@/pages/BulkActions';
 import RuleCheck from '@/pages/RuleCheck';
+import AssignmentReasons from '@/pages/AssignmentReasons';
+import QueueManagement from '@/pages/QueueManagement';
+import UploadCases from '@/pages/UploadCases';
+import ReportsCenter from '@/pages/ReportsCenter';
+import Monitoring from '@/pages/Monitoring';
+import CustomReports from '@/pages/CustomReports';
 
 /**
  * Routing follows our edited IA (data/navigation.js): no Case priority, no
@@ -41,17 +47,17 @@ export function App() {
                 <Route path={ROUTES.bulkActions} element={<BulkActions />} />
                 <Route path={ROUTES.ruleCheck} element={<RuleCheck />} />
 
-                <Route path={ROUTES.assignmentReasons} element={<Placeholder title="Assignment reasons" description="Reasons recorded whenever a case changes hands." icon="tag" />} />
-                <Route path={ROUTES.queueManagement} element={<Placeholder title="Queue management" description="Queues, service targets and live depth." icon="inbox" />} />
+                <Route path={ROUTES.assignmentReasons} element={<AssignmentReasons />} />
+                <Route path={ROUTES.queueManagement} element={<QueueManagement />} />
                 <Route path={ROUTES.caseManagement} element={<CaseManagement />} />
-                <Route path={ROUTES.uploadCases} element={<Placeholder title="Upload cases" description="Import cases from CSV." icon="upload" />} />
+                <Route path={ROUTES.uploadCases} element={<UploadCases />} />
 
                 <Route path={ROUTES.workCase} element={<WorkCase />} />
                 <Route path={ROUTES.workCaseDetail()} element={<WorkCase />} />
 
-                <Route path={ROUTES.reportsCenter} element={<Placeholder title="Reports center" description="Due-date pressure and reason-category totals." icon="pie" />} />
-                <Route path={ROUTES.monitoring} element={<Placeholder title="Monitoring" description="Document processing, outcomes and errors." icon="activity" />} />
-                <Route path={ROUTES.customReports} element={<Placeholder title="Custom reports" description="Build, preview and schedule a report." icon="spreadsheet" />} />
+                <Route path={ROUTES.reportsCenter} element={<ReportsCenter />} />
+                <Route path={ROUTES.monitoring} element={<Monitoring />} />
+                <Route path={ROUTES.customReports} element={<CustomReports />} />
 
                 <Route path={ROUTES.users} element={<Placeholder title="Users" description="People, skills and permissions." icon="users" />} />
                 <Route path={ROUTES.apiDocumentation} element={<Placeholder title="API documentation" description="Endpoints, schemas and samples." icon="code" />} />
