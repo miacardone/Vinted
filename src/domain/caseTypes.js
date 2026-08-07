@@ -62,11 +62,11 @@ export const CASE_COLUMNS = [
   { key: 'entityLabel', header: 'Entity', appliesTo: 'both', width: '120px', fw: 8 },
   { key: 'disputeAmount', header: 'Amount', appliesTo: 'both', width: '112px', fw: 8, align: 'right', mono: true, sortable: true },
   { key: 'status', header: 'Status', appliesTo: 'both', width: '116px', fw: 8, sortable: true },
-  { key: 'outcome', header: 'Outcome', appliesTo: 'both', width: '112px', fw: 8 },
-  { key: 'docStatus', header: 'Doc status', appliesTo: 'both', width: '116px', fw: 8 },
+  { key: 'outcome', header: 'Outcome', appliesTo: 'both', width: '112px', fw: 6 },
+  { key: 'docStatus', header: 'Doc status', appliesTo: 'both', width: '116px', fw: 7 },
   { key: 'queueLabel', header: 'Queue', appliesTo: 'both', width: '160px', fw: 10 },
-  { key: 'worker', header: 'Assigned to', appliesTo: 'both', width: '170px', fw: 11 },
-  { key: 'dueDate', header: 'Due', appliesTo: 'both', width: '116px', fw: 8, sortable: true },
+  { key: 'worker', header: 'Assigned to', appliesTo: 'both', width: '170px', fw: 13 },
+  { key: 'dueDate', header: 'Due', appliesTo: 'both', width: '116px', fw: 12, sortable: true },
 ];
 
 export function columnsFor(caseType = 'all') {

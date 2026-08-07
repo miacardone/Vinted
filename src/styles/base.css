@@ -68,7 +68,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .nowrap { white-space: nowrap; }
 .grow { flex: 1; min-width: 0; }
 
-.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.truncate { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 
 .sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;

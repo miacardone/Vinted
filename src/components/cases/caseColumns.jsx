@@ -52,7 +52,7 @@ function Reference({ row }) {
 }
 
 const RENDERERS = {
-  id: (r) => <span className="mono strong">{r.id}</span>,
+  id: (r) => <span className="mono strong nowrap">{r.id}</span>,
   caseType: (r) => <CaseTypeBadge caseType={r.caseType} />,
   reference: (r) => <Reference row={r} />,
   arn: (r) => <TruncatedText value={r.arn ?? '—'} className="mono" />,

@@ -328,6 +328,15 @@
   vertical-align: middle; color: var(--c-ink);
 }
 .dt--fit tbody td { padding: 5px var(--s-1); }
+
+/* table-fixed sets the column width but does NOT stop content escaping it.
+   Without these three rules long emails and queue names bleed into the next
+   column and the due pill collides with the actions icons. */
+.dt--fit th,
+.dt--fit td { overflow: hidden; }
+.dt td > *,
+.dt th > * { max-width: 100%; }
+.dt--fit td .due { max-width: 100%; overflow: hidden; }
 .dt tbody tr:last-child td { border-bottom: 0; }
 .dt tbody tr:hover { background: var(--c-primary-wash); }
 .dt tbody tr.is-selected { background: var(--c-primary-tint); }
