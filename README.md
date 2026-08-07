@@ -15,7 +15,8 @@ npm run build        # production build to dist/
 npm run preview      # serve the built output
 ```
 
-**Demo credentials: `PriceLine` / `Changeme123`** — also shown on the sign-in screen.
+**Demo credentials: `VintedDemo` / `Changeme123`** — also shown on the sign-in screen.
+(The PriceLine tenant uses `PriceLineDemo` / `Changeme123`.)
 
 ---
 

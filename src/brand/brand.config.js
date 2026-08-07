@@ -274,7 +274,7 @@ export const vintedBrand = {
     help: true,
   },
 
-  demoCredentials: { username: 'PriceLine', password: 'Changeme123' },
+  demoCredentials: { username: 'VintedDemo', password: 'Changeme123' },
 };
 
 /* ------------------------------------------------------------------ *
@@ -376,6 +376,9 @@ export const pricelineBrand = {
   ],
 
   thresholds: { ...vintedBrand.thresholds, minimumProcessingAmount: 10, riskAmount: 500, routingHighValue: 900 },
+
+  /** Its own, so the second tenant never shows the first tenant's username. */
+  demoCredentials: { username: 'PriceLineDemo', password: 'Changeme123' },
 };
 
 /* ------------------------------------------------------------------ *
