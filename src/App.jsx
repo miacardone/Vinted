@@ -11,6 +11,10 @@ import Dashboard from '@/pages/Dashboard';
 import Placeholder from '@/pages/Placeholder';
 import CaseManagement from '@/pages/CaseManagement';
 import WorkCase from '@/pages/WorkCase';
+import RuleGroups from '@/pages/RuleGroups';
+import AddRule from '@/pages/AddRule';
+import BulkActions from '@/pages/BulkActions';
+import RuleCheck from '@/pages/RuleCheck';
 
 /**
  * Routing follows our edited IA (data/navigation.js): no Case priority, no
@@ -32,10 +36,10 @@ export function App() {
                 <Route index element={<Navigate to={ROUTES.dashboard} replace />} />
                 <Route path={ROUTES.dashboard} element={<Dashboard />} />
 
-                <Route path={ROUTES.ruleGroups} element={<Placeholder title="Rule groups" description="Automation that runs at intake and on a schedule." icon="layers" />} />
-                <Route path={ROUTES.addRule} element={<Placeholder title="Add rule" description="Build a rule from criteria, actions and details." icon="rules" />} />
-                <Route path={ROUTES.bulkActions} element={<Placeholder title="Bulk actions" description="Apply one change to many cases at once." icon="checklist" />} />
-                <Route path={ROUTES.ruleCheck} element={<Placeholder title="Rule check" description="Test one rule against one case." icon="searchCheck" />} />
+                <Route path={ROUTES.ruleGroups} element={<RuleGroups />} />
+                <Route path={ROUTES.addRule} element={<AddRule />} />
+                <Route path={ROUTES.bulkActions} element={<BulkActions />} />
+                <Route path={ROUTES.ruleCheck} element={<RuleCheck />} />
 
                 <Route path={ROUTES.assignmentReasons} element={<Placeholder title="Assignment reasons" description="Reasons recorded whenever a case changes hands." icon="tag" />} />
                 <Route path={ROUTES.queueManagement} element={<Placeholder title="Queue management" description="Queues, service targets and live depth." icon="inbox" />} />
