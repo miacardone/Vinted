@@ -6,7 +6,8 @@ import { SearchBar, SelectField, TextField } from '@/components/ui/Form';
 import { BarChart, Donut } from '@/components/charts/Charts';
 import { TruncatedText } from '@/components/ui/Overlay';
 import Icon from '@/components/ui/Icon';
-import { GROUP_BY_FIELDS, REPORT_FORMATS, REPORT_TEMPLATES, REPORT_TYPES, SAVED_REPORTS } from '@/data/content';
+import { REPORT_FORMATS, REPORT_TEMPLATES, REPORT_TYPES, SAVED_REPORTS } from '@/data/content';
+import { FILTER_OPERATORS, REPORT_FIELDS, applyReportScope, describeFilter, getReportField } from '@/domain/reportFields';
 import { CASES } from '@/data/cases';
 import { caseActivityPerWeek, caseKpis, reasonCodeDonut } from '@/domain/metrics';
 import brand from '@/brand/brand.config';
@@ -52,7 +53,8 @@ function ReportBuilder({ onSave }) {
   const [type, setType] = useState(REPORT_TYPES[0]);
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
-  const [groupBy, setGroupBy] = useState(GROUP_BY_FIELDS[0]);
+  const [groupBy, setGroupBy] = useState(REPORT_FIELDS[0].id);
+  const [filter, setFilter] = useState({ field: '', operator: 'gt', value: '' });
   const [format, setFormat] = useState('CSV');
   const [mode, setMode] = useState('on_demand');
   const [frequency, setFrequency] = useState('Weekly');
@@ -61,11 +63,17 @@ function ReportBuilder({ onSave }) {
   const [recipientDraft, setRecipientDraft] = useState('');
 
   const template = REPORT_TEMPLATES.find((t) => t.id === templateId);
-  const kpis = useMemo(() => caseKpis(CASES), []);
-  const byPeriod = useMemo(() => caseActivityPerWeek(CASES, 6), []);
-  const donut = useMemo(() => reasonCodeDonut(CASES, brand.schemes[0].id, 5), []);
+
+  /* The preview is computed from the SCOPED set, not the whole book — the
+     point of a builder is seeing the effect before you schedule it. */
+  const scoped = useMemo(() => applyReportScope(CASES, { start, end, filter }), [start, end, filter]);
+  const kpis = useMemo(() => caseKpis(scoped), [scoped]);
+  const byPeriod = useMemo(() => caseActivityPerWeek(scoped, 6), [scoped]);
+  const donut = useMemo(() => reasonCodeDonut(scoped, brand.schemes[0].id, 5), [scoped]);
 
   const range = start && end ? `${formatDate(start)} – ${formatDate(end)}` : 'All time';
+  const filterLabel = describeFilter(filter);
+  const groupByLabel = getReportField(groupBy)?.label ?? groupBy;
 
   const addRecipient = () => {
     const v = recipientDraft.trim();
@@ -97,7 +105,48 @@ function ReportBuilder({ onSave }) {
             </div>
           </div>
 
-          <SelectField label="Group by" value={groupBy} onChange={(e) => setGroupBy(e.target.value)} options={GROUP_BY_FIELDS.map((f) => ({ value: f, label: f }))} />
+          <SelectField
+            label="Group by"
+            value={groupBy}
+            onChange={(e) => setGroupBy(e.target.value)}
+            options={REPORT_FIELDS.map((f) => ({ value: f.id, label: f.label }))}
+          />
+
+          {/* Filter row — field, operator, value. The field list is the same
+              REPORT_FIELDS the Group by above uses, so the two cannot drift. */}
+          <div className="field">
+            <span className="field__label">Filter</span>
+            <div className="stack stack--xtight">
+              <SelectField
+                value={filter.field}
+                onChange={(e) => setFilter((f) => ({ ...f, field: e.target.value }))}
+                placeholder="No filter"
+                options={REPORT_FIELDS.map((f) => ({ value: f.id, label: f.label }))}
+              />
+              {filter.field && (
+                <>
+                  <SelectField
+                    value={filter.operator}
+                    onChange={(e) => setFilter((f) => ({ ...f, operator: e.target.value }))}
+                    options={FILTER_OPERATORS.map((o) => ({ value: o.id, label: o.label }))}
+                  />
+                  <div className="row row--xtight row--nowrap">
+                    <input
+                      className="input"
+                      value={filter.value}
+                      onChange={(e) => setFilter((f) => ({ ...f, value: e.target.value }))}
+                      placeholder="Value"
+                      aria-label="Filter value"
+                    />
+                    {(filter.field || filter.value) && (
+                      <IconButton icon="close" label="Clear filter" size={12} onClick={() => setFilter({ field: '', operator: 'gt', value: '' })} />
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
           <SelectField label="Format" value={format} onChange={(e) => setFormat(e.target.value)} options={REPORT_FORMATS.map((f) => ({ value: f, label: f }))} />
 
           <div className="field">
@@ -153,14 +202,20 @@ function ReportBuilder({ onSave }) {
 
         <Card
           title="Report preview"
-          action={<Button variant="primary" icon="check" disabled={!name.trim()} onClick={() => { onSave({ name: name.trim(), type, format, mode, frequency, recipients, templateId }); notify(`Report “${name.trim()}” saved.`, 'success'); setName(''); }}>Save report</Button>}
+          action={<Button variant="primary" icon="check" disabled={!name.trim()} onClick={() => { onSave({ name: name.trim(), type, format, mode, frequency, recipients, templateId, groupBy, filter, rowCount: scoped.length }); notify(`Report “${name.trim()}” saved — ${formatNumber(scoped.length)} rows.`, 'success'); setName(''); }}>Save report</Button>}
         >
           <div className="stack">
             <div>
               <h3>{name.trim() || template.name}</h3>
               <p className="micro subtle">
-                {range} · Grouped by {groupBy} · {template.name} · {format}
+                {range} · Grouped by {groupByLabel} · {template.name} · {format}
                 {mode === 'recurring' ? ` · ${frequency}` : ' · On demand'}
+                {filterLabel && <> · Filtered: {filterLabel}</>}
+              </p>
+              <p className="micro" style={{ color: scoped.length ? 'var(--c-ink-muted)' : 'var(--c-warning)' }}>
+                <strong className="mono">{formatNumber(scoped.length)}</strong> of{' '}
+                <strong className="mono">{formatNumber(CASES.length)}</strong> cases in scope
+                {scoped.length === 0 && ' — nothing matches, so the preview is empty.'}
               </p>
             </div>
 
@@ -262,7 +317,7 @@ export function CustomReports() {
           <ReportBuilder onSave={(r) => {
             setReports((p) => [...p, {
               ...r, id: `rep${p.length + 1}`, dateCreated: new Date().toISOString(), createdBy: 'you',
-              rowCount: CASES.length, fileSize: '—',
+              rowCount: r.rowCount ?? CASES.length, fileSize: '—',
               schedule: r.mode === 'recurring' ? { mode: 'recurring', frequency: r.frequency, recipients: r.recipients } : { mode: 'on_demand' },
             }]);
             setTab('reports');

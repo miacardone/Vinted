@@ -167,13 +167,16 @@ export const AUTH_NOTE = {
 
 export const REPORT_TYPES = ['Operational', 'Financial', 'Compliance', 'Marketplace'];
 export const REPORT_FORMATS = ['CSV', 'XLSX', 'JSON', 'PDF'];
-export const GROUP_BY_FIELDS = ['Queue', 'Reason category', 'Entity', 'Case type', 'Assignee', 'Due date bucket'];
+/**
+ * Group-by and filter options both come from domain/reportFields.js so the two
+ * controls cannot drift. Nothing here duplicates that list.
+ */
 
 export const REPORT_TEMPLATES = [
-  { id: 'tpl_operational', name: 'Operational queue review', description: 'Open cases by queue and assignee with due-date pressure.', type: 'Operational', groupBy: 'Queue' },
-  { id: 'tpl_reason', name: 'Reason code analysis', description: 'Volume and value by scheme reason code and category.', type: 'Compliance', groupBy: 'Reason category' },
-  { id: 'tpl_recovery', name: 'Recovery and write-off', description: 'Closed cases with outcome and recovered value.', type: 'Financial', groupBy: 'Entity' },
-  { id: 'tpl_marketplace', name: 'Marketplace exposure', description: 'Seller and item context across both intake paths.', type: 'Marketplace', groupBy: 'Case type' },
+  { id: 'tpl_operational', name: 'Operational queue review', description: 'Open cases by queue and assignee with due-date pressure.', type: 'Operational', groupBy: 'queue' },
+  { id: 'tpl_reason', name: 'Reason code analysis', description: 'Volume and value by scheme reason code and category.', type: 'Compliance', groupBy: 'reasonCategory' },
+  { id: 'tpl_recovery', name: 'Recovery and write-off', description: 'Closed cases with outcome and recovered value.', type: 'Financial', groupBy: 'entity' },
+  { id: 'tpl_marketplace', name: 'Marketplace exposure', description: 'Seller and item context across both intake paths.', type: 'Marketplace', groupBy: 'caseType' },
 ];
 
 export const SAVED_REPORTS = [

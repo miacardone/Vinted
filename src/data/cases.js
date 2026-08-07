@@ -96,9 +96,13 @@ const SHARING = {
 function buildPeople(draw) {
   const buyers = Array.from({ length: 420 }, (_, i) => {
     const market = draw.pick(brand.markets);
+    const name = `${draw.pick(FIRST_NAMES)} ${draw.pick(LAST_NAMES)}`;
     return {
       id: `BYR-${100000 + i * 7}`,
-      name: `${draw.pick(FIRST_NAMES)} ${draw.pick(LAST_NAMES)}`,
+      name,
+      // Consumer address, deliberately on a neutral domain — the buyer is not
+      // an employee of the tenant.
+      email: `${name.toLowerCase().replace(/[^a-z]+/g, '.')}@mail.example`,
       market,
       city: draw.pick(MARKET_CITIES[market] ?? ['—']),
     };
@@ -300,6 +304,7 @@ function generate() {
 
       buyerId: buyer.id,
       buyer: buyer.name,
+      buyerEmail: buyer.email,
       buyerCity: buyer.city,
       sellerId: seller.id,
       seller: seller.name,
