@@ -259,6 +259,10 @@ Not verified:
   throwaway harnesses. Vitest + Testing Library is the first thing to add.
 - No cross-browser testing beyond Chrome, no testing below 1280px, and no
   screen-reader pass.
-- The Vinted logo could not be downloaded — brandfetch's CDN needs an API key and
-  the only reachable asset was a 32×32 favicon. `public/tenant-*.svg` are
-  authored marks, still referenced by path from the config.
+- The real Vinted logotype is now in place (`public/tenant-vinted-wordmark.svg`),
+  supplied as a white 154.8×50 wordmark. Because it is 3.1:1 and already spells
+  the tenant name, it is used only where there is room for it — nav rail and
+  sign-in — and the duplicated `wordmark.text` is suppressed beside it.
+  `public/tenant-vinted.svg` is the square mark for the square slots (favicon,
+  document letterhead), built from the logotype's own leading glyph rather than
+  invented. `public/tenant-priceline.svg` is still an authored placeholder.

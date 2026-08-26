@@ -121,3 +121,33 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .wordmark__accent { color: var(--c-primary); margin-left: 3px; }
 .wordmark--inverse .wordmark__text { color: #fff; }
 .wordmark--inverse .wordmark__accent { color: var(--c-nav-active); }
+
+/* Supplied logotype. Height and aspect-ratio are both set inline — the ratio
+   is a property of the tenant's asset and comes from brand.config, so this
+   shared stylesheet never learns a tenant-specific number.
+   `background: currentColor` through the mask is what lets one flat-colour
+   file read white on the rail and teal on a light surface. */
+.wordmark__mark {
+  flex: none;
+  display: block;
+  background: currentColor;
+  color: var(--c-primary);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: left center;
+  mask-position: left center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+.wordmark--inverse .wordmark__mark { color: #fff; }
+
+/* Beside a logotype the accent is the only type present, so it carries the
+   weight the tenant name would otherwise have held. */
+.wordmark__accent--solo {
+  font-family: var(--font-display);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  margin-left: 0;
+}

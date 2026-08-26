@@ -74,8 +74,28 @@ export const vintedBrand = {
   supportEmail: 'disputes@vinted.example',
   emailDomain: 'vinted.example',
 
-  /** Path only — never imported into a component. Served from /public. */
+  /** Paths only — never imported into a component. Served from /public. */
   logo: '/tenant-vinted.svg',
+
+  /**
+   * The tenant's real logotype, for the places with room for it (nav rail,
+   * sign-in). It is a WORDMARK — it already spells the tenant name — so
+   * Wordmark.jsx drops the duplicated `wordmark.text` when this is set and
+   * renders only the product accent beside it.
+   *
+   * Painted with CSS `mask-image` over `currentColor` rather than dropped in
+   * an <img>, because the supplied asset is a single flat colour and has to
+   * read white on the dark rail and teal on a light surface. One file, both
+   * contexts, and still a path rather than an import.
+   *
+   * `logo` stays a SQUARE mark for the square slots — favicon and document
+   * letterhead — because this wordmark is 3.1:1 and would be crushed to
+   * nothing at 16x16.
+   */
+  logoWordmark: '/tenant-vinted-wordmark.svg',
+
+  /** The asset's own proportions. A shared stylesheet must not know these. */
+  logoWordmarkAspect: 154.8 / 50,
 
   wordmark: { text: 'Vinted', accent: 'Console', weight: 700 },
 
@@ -291,6 +311,9 @@ export const pricelineBrand = {
   supportEmail: 'disputes@priceline.example',
   emailDomain: 'priceline.example',
   logo: '/tenant-priceline.svg',
+  /** No supplied logotype for this tenant — falls back to mark + type. */
+  logoWordmark: null,
+  logoWordmarkAspect: null,
   wordmark: { text: 'PriceLine', accent: 'Console', weight: 700 },
 
   colors: {
