@@ -6,7 +6,9 @@ import { Modal, ConfirmDialog } from '@/components/ui/Modal';
 import { SelectField, TextAreaField, TextField } from '@/components/ui/Form';
 import { Tooltip, TruncatedText } from '@/components/ui/Overlay';
 import Icon from '@/components/ui/Icon';
-import { RULES, RULE_GROUPS, RULE_TRIGGERS, historyForRule } from '@/data/rules';
+import { RULE_GROUPS, RULE_TRIGGERS, historyForRule } from '@/data/rules';
+import { useRulesState } from '@/hooks/useRules';
+import { isCustomised, resetRules } from '@/data/rules-store';
 import { CASES } from '@/data/cases';
 import { describeCriterion, getRuleAction, matchCases } from '@/domain/criteria';
 import { applyDrop, blockFor, displayNumbers, orderedRules, resolveDrop } from '@/utils/reorderRules';
@@ -81,7 +83,7 @@ export function RuleGroups() {
   const { notify } = useToast();
 
   const [groups, setGroups] = useState(RULE_GROUPS);
-  const [rules, setRules] = useState(RULES);
+  const [rules, setRules] = useRulesState();
   const [activeId, setActiveId] = useState(RULE_GROUPS[1].id);
   const [groupModal, setGroupModal] = useState(false);
   const [historyRule, setHistoryRule] = useState(null);
@@ -168,7 +170,23 @@ export function RuleGroups() {
       <PageHeader
         title="Rule groups"
         description="Automation that runs at intake, on a schedule and after other rules fire. Groups run in order; every rule inside a group is evaluated."
-        actions={<Button variant="primary" icon="plus" onClick={() => navigate(ROUTES.addRule)}>Add Rule</Button>}
+        actions={
+          <div className="row row--tight">
+            {/* Rules now persist, so a demo needs a way back to the shipped set. */}
+            {isCustomised() && (
+              <Tooltip label="Discards every rule added, edited, reordered or deleted in this browser and restores the set the build ships with." wide>
+                <Button
+                  variant="ghost"
+                  icon="refresh"
+                  onClick={() => { resetRules(); notify('Rules restored to the shipped set.', 'success'); }}
+                >
+                  Reset
+                </Button>
+              </Tooltip>
+            )}
+            <Button variant="primary" icon="plus" onClick={() => navigate(ROUTES.addRule)}>Add Rule</Button>
+          </div>
+        }
       />
 
       <div className="grid" style={{ gridTemplateColumns: 'minmax(230px, 300px) minmax(0, 1fr)', alignItems: 'start' }}>

@@ -247,22 +247,31 @@ export function Alerts() {
           </div>
         </Card>
 
+        {/*
+          The count leads each row in a fixed right-aligned gutter, so the
+          digits stack into a column the eye can run down and every label
+          starts on the same left edge. This was previously label-left /
+          count-right across a half-page column, which put a foot of empty
+          space between a rule and its number — at that distance you stop
+          reading and start guessing which number belongs to which row.
+        */}
         <Card title="Rules behind these alerts">
-          <div className="grid grid--2" style={{ gap: 'var(--s-2)' }}>
+          <div className="rule-grid">
             {['Deadlines', 'Money', 'Evidence', 'Risk', 'Platform'].map((category) => {
               const rules = ALERT_RULES.filter((r) => r.category === category);
               if (!rules.length) return null;
               return (
-                <div key={category} className="stack stack--xtight">
+                <div key={category}>
                   <span className="t-section-label">{category}</span>
                   {rules.map((r) => {
                     const firing = alerts.find((a) => a.ruleId === r.id);
+                    const tone = firing ? getSeverity(firing.severity).tone : null;
                     return (
-                      <div key={r.id} className="row row--between row--nowrap">
-                        <span className="small">{r.label}</span>
-                        {firing
-                          ? <Badge tone={getSeverity(firing.severity).tone}>{formatNumber(firing.count)}</Badge>
-                          : <span className="nano subtle">clear</span>}
+                      <div key={r.id} className="rule-row">
+                        <span className={`rule-row__count ${tone ? `rule-row__count--${tone}` : ''}`.trim()}>
+                          {firing ? formatNumber(firing.count) : '—'}
+                        </span>
+                        <span className={`rule-row__label ${firing ? '' : 'is-clear'}`.trim()}>{r.label}</span>
                       </div>
                     );
                   })}

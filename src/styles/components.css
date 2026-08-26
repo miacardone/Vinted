@@ -848,3 +848,21 @@
 .redact__side { min-width: 0; }
 .redact__region { padding: var(--s-2); border: 1px solid var(--c-line); border-radius: var(--r-md); background: var(--c-surface); }
 .redact__region-no { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: var(--r-sm); background: var(--c-ink); color: #fff; font-family: var(--font-mono); font-size: var(--fs-nano); font-weight: 700; flex: none; }
+
+/* ---------- Alert rule roll-up ---------- *
+   Columns are capped rather than stretched to half the page: a rule label is
+   ~24 characters, so a 700px column only buys whitespace between the label and
+   its number. auto-fit keeps three tidy columns on a wide screen and folds to
+   one on a laptop. */
+
+.rule-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 320px)); gap: var(--s-5) var(--s-6); }
+
+/* Fixed numeric gutter — digits right-align into a scannable column and every
+   label starts on the same left edge. */
+.rule-row { display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: baseline; gap: var(--s-2); padding: 3px 0; }
+.rule-row__count { font-family: var(--font-mono); font-size: var(--fs-small); font-weight: 700; text-align: right; color: var(--c-ink-subtle); font-variant-numeric: tabular-nums; }
+.rule-row__count--danger { color: var(--c-danger); }
+.rule-row__count--warning { color: var(--c-warning); }
+.rule-row__count--info { color: var(--c-info); }
+.rule-row__label { font-size: var(--fs-small); color: var(--c-ink); min-width: 0; }
+.rule-row__label.is-clear { color: var(--c-ink-subtle); }

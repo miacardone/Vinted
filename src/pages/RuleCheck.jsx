@@ -4,7 +4,7 @@ import { PageHeader, Card, Button, Badge, EmptyState } from '@/components/ui/Sur
 import { SelectField, TextField } from '@/components/ui/Form';
 import { Donut } from '@/components/charts/Charts';
 import Icon from '@/components/ui/Icon';
-import { RULES } from '@/data/rules';
+import { useRules } from '@/hooks/useRules';
 import { CASES } from '@/data/cases';
 import { CRITERIA_CATEGORIES, checkCase, describeCriterion, getCategory, getRuleAction, optionLabel } from '@/domain/criteria';
 import { ROUTES } from '@/data/navigation';
@@ -26,6 +26,7 @@ const VERDICT = {
 };
 
 export function RuleCheck() {
+  const rules = useRules();
   const [ruleId, setRuleId] = useState('');
   const [caseRef, setCaseRef] = useState('');
   const [extraKey, setExtraKey] = useState('');
@@ -34,7 +35,7 @@ export function RuleCheck() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
 
-  const rule = RULES.find((r) => r.id === ruleId);
+  const rule = rules.find((r) => r.id === ruleId);
   const extraCategory = extraKey ? getCategory(extraKey) : null;
 
   const run = () => {
@@ -73,7 +74,7 @@ export function RuleCheck() {
         <div className="stack stack--tight">
           <Card title="Rules" bodyClassName="card__body--flush">
             <div className="hairlines" style={{ maxHeight: 420, overflowY: 'auto' }}>
-              {RULES.map((r) => (
+              {rules.map((r) => (
                 <button
                   key={r.id}
                   type="button"

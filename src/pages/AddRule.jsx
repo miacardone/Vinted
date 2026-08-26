@@ -5,6 +5,8 @@ import { SelectField, TextAreaField, TextField } from '@/components/ui/Form';
 import Icon from '@/components/ui/Icon';
 import { CRITERIA_CATEGORIES, RULE_ACTION_OPTIONS, RULE_STATUS_OPTIONS, categoryOptions, describeCriterion, getCategory, getRuleAction, matchCases, optionLabel } from '@/domain/criteria';
 import { RULE_GROUPS } from '@/data/rules';
+import { addRule, nextRuleId, nextSortOrder } from '@/data/rules-store';
+import { CURRENT_USER } from '@/data/people';
 import { CASES } from '@/data/cases';
 import brand from '@/brand/brand.config';
 import { ASSIGN_SKILLS, ASSIGN_USERS } from '@/data/work-case';
@@ -306,7 +308,40 @@ export function AddRule() {
                 <Button
                   variant="primary"
                   disabled={!canComplete}
-                  onClick={() => { notify(`Rule “${name}” created — ${formatNumber(matched.length)} cases match.`, 'success'); navigate(ROUTES.ruleGroups); }}
+                  onClick={() => {
+                    /*
+                     * This used to fire the toast and navigate WITHOUT writing
+                     * the rule anywhere, so the confirmation was for something
+                     * that never happened and the rule was absent from the
+                     * list it landed on. It now goes into the shared store, so
+                     * Rule groups and Rule check both see it immediately.
+                     *
+                     * `impact` is stored as the live match count at creation
+                     * time; Rule groups recomputes it against the book on every
+                     * render, so this is only the value the rule was authored
+                     * against.
+                     */
+                    const rule = {
+                      id: nextRuleId(),
+                      groupId,
+                      parentId: null,
+                      sortOrder: nextSortOrder(groupId),
+                      enabled: true,
+                      name: name.trim(),
+                      description: description.trim(),
+                      criteria,
+                      actions,
+                      statuses,
+                      impact: matched.length,
+                      runCount: 0,
+                      lastRunAt: null,
+                      createdBy: CURRENT_USER.email,
+                      createdAt: new Date().toISOString(),
+                    };
+                    addRule(rule);
+                    notify(`Rule “${rule.name}” created — ${formatNumber(matched.length)} cases match.`, 'success');
+                    navigate(ROUTES.ruleGroups);
+                  }}
                 >
                   Complete Rule
                 </Button>

@@ -6,11 +6,14 @@ import { useBrand } from '@/brand/BrandProvider';
  * string, not a module graph.
  *
  * TWO SHAPES, DELIBERATELY. A tenant that supplies a real logotype
- * (`logoWordmark`) gets it rendered at its own aspect ratio, and the
- * `wordmark.text` is dropped — the asset already spells the name, so drawing
- * both gives "Vinted Vinted Console". Only the product accent stays, which is
- * the correct lockup for a white-label console: the client's mark, our
- * product name.
+ * (`logoWordmark`) gets it rendered alone, at its own aspect ratio. The asset
+ * already spells the name, so `wordmark.text` would double it, and hanging a
+ * product word off the side of a client's registered logotype makes it read as
+ * a lockup they never approved. The client's mark stands by itself.
+ *
+ * `wordmark.text`/`accent` stay in the config for that tenant even though they
+ * are unused here — they are the fallback definition, so dropping
+ * `logoWordmark` restores a working lockup rather than an empty rail.
  *
  * A tenant with no logotype falls back to the square mark plus type, which is
  * what every tenant did before and what PriceLine still does.
@@ -37,7 +40,6 @@ export function Wordmark({ inverse = false, showText = true, size = 26 }) {
             maskImage: `url(${brand.logoWordmark})`,
           }}
         />
-        {showText && <span className="wordmark__accent wordmark__accent--solo">{brand.wordmark.accent}</span>}
       </span>
     );
   }
