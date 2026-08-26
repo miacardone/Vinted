@@ -49,7 +49,7 @@ export const ALL_PERMISSIONS = PERMISSION_GROUPS.flatMap((g) => g.permissions);
 const MANAGER_DENY = new Set(['Delete Cases', 'Delete Rule', 'Permissions', 'System Preferences']);
 
 const ANALYST_ALLOW = new Set([
-  'Dashboard', 'Case Management', 'Work Case', 'Export Cases',
+  'Dashboard', 'Alerts', 'Case Management', 'Work Case', 'Export Cases',
   'Reports Center', 'Account Settings', 'Help', 'Rule Check',
 ]);
 

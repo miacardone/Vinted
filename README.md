@@ -122,11 +122,15 @@ Our edited IA. **The omissions are deliberate** and documented in
 
 ```
 Dashboard
+Alerts                                                   ← deadlines, duplicate
+                                                           refunds, evidence gaps
 Rules      > Rule groups | Bulk actions | Rule check     ← not "Criteria check"
 Case admin > Assignment reasons | Queue management |
              Case management | Upload cases             ← no Case priority;
                                                           Archived is a TAB
-Work case
+Work case  > Merchant docs | Issuer docs |
+             Dispute editor | Related cases              ← editor is a TAB, in
+                                                           case context
 Reports    > Reports center | Monitoring | Custom reports ← no Scheduler page
 Users                                                    ← ONE page, tabs
 API documentation
@@ -137,6 +141,40 @@ Help
 No Unmatched docs section. Priority is derived from due date and value, so there
 is nothing to administer. **The Permissions grid is generated from this
 navigation**, so it can never grant access to a page that does not exist.
+
+### Alerts
+
+Nine rules, evaluated on every load from the same `CASES` array the queues and
+charts read — there is no separate alert feed that can drift from the book. Each
+row has to name the cases behind it and route somewhere real; a count that links
+nowhere is noise, and noise is what teaches people to ignore the one alert that
+mattered. `src/domain/alerts.js` holds the rules and the reasoning behind the
+severity split.
+
+The topbar bell reads the same function. It previously held a hardcoded list
+that claimed "18 cases due within 24 hours" regardless of the data underneath.
+
+### Dispute editor
+
+A tab on Work case, not a page: the packet only makes sense beside the reason
+code, amount and deadline it is arguing against. Narrative blocks are drafted
+from the case record, exhibits mirror the documents already attached, and blocks
+reorder — issuers read in order and stop early.
+
+**Screenshot redaction is destructive.** Evidence is pasted straight out of
+internal tooling, which carries agent names, staff IDs and internal notes to the
+issuer along with the proof of delivery. Regions drawn in the redaction studio
+are composited onto a canvas at the source image's own resolution and exported
+as a flattened PNG; the pre-redaction image is never attached and is not
+retained. It is not a black `<div>` over an intact picture — that is the classic
+redaction failure, where the original leaves the building inside the file.
+
+Regions are stored normalised, so a box drawn on a scaled preview lands exactly
+on a 4K source. Every region carries a reason, and the reasons roll up into an
+audit line on the packet — six months later "why was this covered" has an
+answer. Pixelation is offered but is not the default, and the UI says why: a
+mosaic preserves the structure of what it covers, which is enough to recover a
+short predictable string like a staff ID.
 
 ---
 
@@ -196,8 +234,18 @@ Verified:
 - Both tenants generate a complete dataset: 1,200 cases, exactly 2:1, **zero
   presentments post-dating today**, consolidation at **13.2%** in the 10–15 band,
   entity resolved on every case.
-- All 20 screens plus the work-case detail mount and render their **loaded**
+- All 21 screens plus the work-case detail mount and render their **loaded**
   state in jsdom with no React errors.
+- Alerts renders all nine rules against the live book with no console errors,
+  and the acknowledge/restore cycle round-trips through localStorage.
+- Redaction was verified **on the pixels, not on the screen**: after applying a
+  solid-box region, the exported PNG reads `0,0,0` at the covered coordinates
+  while untouched text nearby still reads its original ink value, at the source
+  image's full 900×520 resolution. A pixelated region collapses to 5 flat
+  colours with identical pixels inside each block. Paste (a synthetic
+  `ClipboardEvent` carrying a real PNG `File`), drag-and-drop, the file picker
+  and the generated sample all land as exhibits, and the submit button stays
+  disabled while any screenshot is unredacted.
 - Opened in **real Chrome at 1280 and 1440**: 16 routes each, no horizontal
   overflow, no console errors. Three table-overflow defects were found and fixed
   this way — long emails bleeding into the next column, the due pill colliding

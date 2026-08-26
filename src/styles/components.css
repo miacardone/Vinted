@@ -768,3 +768,83 @@
 .login__form { background: var(--c-surface); padding: var(--s-12) var(--s-10); display: flex; flex-direction: column; justify-content: center; gap: var(--s-4); }
 .login__demo { border: 1px dashed var(--c-line-strong); border-radius: var(--r-md); padding: var(--s-3); background: var(--c-surface-sunken); font-size: var(--fs-small); }
 @media (max-width: 900px) { .login { grid-template-columns: 1fr; } .login__side { display: none; } .login__form { padding: var(--s-6); } }
+
+/* ---------- Alerts ---------- *
+   The left border carries the severity so a row is classifiable at a glance
+   without reading the badge — and the badge stays, because colour alone is
+   not an accessible signal. */
+
+.alert-row { display: flex; gap: var(--s-3); padding: var(--s-3); border: 1px solid var(--c-line); border-left: 3px solid var(--c-line-strong); border-radius: var(--r-lg); background: var(--c-surface); align-items: flex-start; }
+.alert-row--critical { border-left-color: var(--c-danger); background: var(--c-danger-tint); }
+.alert-row--warning { border-left-color: var(--c-warning); background: var(--c-warning-tint); }
+.alert-row--info { border-left-color: var(--c-info); background: var(--c-surface-sunken); }
+.alert-row.is-acknowledged { opacity: 0.6; background: var(--c-surface-sunken); border-left-color: var(--c-line-strong); }
+.alert-row.is-acknowledged:hover { opacity: 1; }
+
+.alert-row__icon { flex: none; width: 30px; height: 30px; border-radius: var(--r-md); background: var(--c-surface); display: flex; align-items: center; justify-content: center; }
+.alert-row__icon--critical { color: var(--c-danger); }
+.alert-row__icon--warning { color: var(--c-warning); }
+.alert-row__icon--info { color: var(--c-info); }
+
+.alert-row__body { flex: 1; min-width: 0; }
+.alert-row__meta { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+
+.alert-case { display: flex; justify-content: space-between; align-items: center; gap: var(--s-2); padding: var(--s-2); background: var(--c-surface); border: 1px solid var(--c-line); border-radius: var(--r-sm); text-decoration: none; color: inherit; }
+.alert-case:hover { border-color: var(--c-primary); }
+
+@media (max-width: 900px) {
+  .alert-row { flex-wrap: wrap; }
+  .alert-row__meta { flex-direction: row; width: 100%; justify-content: flex-start; gap: var(--s-2); }
+}
+
+.chip-link { font-family: var(--font-mono); font-size: var(--fs-micro); font-weight: 600; color: var(--c-primary); background: var(--c-primary-tint); border: none; border-radius: 999px; padding: 3px 9px; cursor: pointer; }
+.chip-link:hover { background: var(--c-primary); color: #fff; }
+
+/* ---------- Dispute editor ---------- *
+   The rail is narrow on purpose: the document is the work, the checklist is
+   the reminder. Below 1500px the whole thing stacks, because the centre
+   column of Work case is already only ~600px on a laptop. */
+
+.packet { position: relative; }
+.packet__grid { display: grid; grid-template-columns: minmax(0, 1fr) 232px; gap: var(--s-3); align-items: start; margin-top: var(--s-3); }
+@media (max-width: 1500px) { .packet__grid { grid-template-columns: minmax(0, 1fr); } }
+
+.packet__block { border: 1px solid var(--c-line); border-radius: var(--r-lg); background: var(--c-surface); overflow: hidden; }
+.packet__block.is-excluded { opacity: 0.5; background: var(--c-surface-sunken); }
+.packet__block-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); padding: var(--s-2) var(--s-3); background: var(--c-surface-sunken); border-bottom: 1px solid var(--c-line); }
+.packet__block-no { display: inline-flex; align-items: center; justify-content: center; width: 17px; height: 17px; border-radius: var(--r-sm); background: var(--c-primary-tint); color: var(--c-primary-deep); font-size: var(--fs-nano); font-weight: 700; font-family: var(--font-mono); flex: none; }
+.packet__block-body { padding: var(--s-3); }
+
+.packet__evidence { padding: var(--s-2); border: 1px solid var(--c-line); border-radius: var(--r-md); background: var(--c-surface-sunken); }
+
+/* An unredacted exhibit is deliberately hard to ignore — the veil covers the
+   image so nobody reads staff data off a thumbnail on a shared screen. */
+.packet__shot { position: relative; border: 1px solid var(--c-line); border-radius: var(--r-md); overflow: hidden; background: var(--c-surface-sunken); }
+.packet__shot img { display: block; width: 100%; height: auto; }
+.packet__shot.is-raw img { filter: blur(9px); }
+.packet__shot.is-redacted { border-color: var(--c-success); }
+.packet__shot-veil { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-2); text-align: center; padding: var(--s-4); background: rgba(179, 38, 30, 0.08); color: var(--c-danger); backdrop-filter: saturate(0.6); }
+
+.packet__dropveil { position: absolute; inset: 0; z-index: 4; display: flex; align-items: center; justify-content: center; gap: var(--s-2); border: 2px dashed var(--c-primary); border-radius: var(--r-lg); background: var(--c-primary-wash); color: var(--c-primary-deep); font-size: var(--fs-small); font-weight: 600; pointer-events: none; }
+
+.packet__rail { position: sticky; top: var(--s-3); }
+.packet__panel { display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-3); border: 1px solid var(--c-line); border-radius: var(--r-lg); background: var(--c-surface-sunken); }
+
+/* ---------- Redaction studio ---------- */
+
+.redact { display: grid; grid-template-columns: minmax(0, 1fr) 288px; gap: var(--s-4); align-items: start; }
+@media (max-width: 1100px) { .redact { grid-template-columns: minmax(0, 1fr); } }
+
+.redact__stage { min-width: 0; }
+.redact__canvas { position: relative; display: block; line-height: 0; border: 1px solid var(--c-line-strong); border-radius: var(--r-md); overflow: hidden; cursor: crosshair; touch-action: none; user-select: none; background: var(--c-surface-sunken); }
+.redact__canvas img { display: block; width: 100%; height: auto; pointer-events: none; }
+
+.redact__box { position: absolute; box-sizing: border-box; }
+.redact__box--solid { background: #000; border: 1px solid var(--c-primary); }
+.redact__box--pixelate { background: repeating-conic-gradient(rgba(0,0,0,0.82) 0% 25%, rgba(255,255,255,0.55) 0% 50%) 0 0 / 10px 10px; border: 1px solid var(--c-warning); }
+.redact__box--drawing { background: rgba(0,0,0,0.35); border: 1px dashed var(--c-primary); }
+.redact__box-tag { position: absolute; top: -1px; left: -1px; padding: 0 5px; background: var(--c-primary); color: #fff; font-family: var(--font-mono); font-size: var(--fs-nano); font-weight: 700; line-height: 15px; border-radius: 0 0 var(--r-sm) 0; }
+
+.redact__side { min-width: 0; }
+.redact__region { padding: var(--s-2); border: 1px solid var(--c-line); border-radius: var(--r-md); background: var(--c-surface); }
+.redact__region-no { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: var(--r-sm); background: var(--c-ink); color: #fff; font-family: var(--font-mono); font-size: var(--fs-nano); font-weight: 700; flex: none; }

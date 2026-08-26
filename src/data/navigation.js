@@ -12,6 +12,9 @@
  *     the Custom reports builder.
  *   · Users is ONE page with tabs, not a dropdown of three.
  *   · NO Unmatched docs section anywhere.
+ *   · Alerts sits right under Dashboard — SLA risk, high-value review,
+ *     duplicate-refund exposure and integration health in one place, so
+ *     nobody has to piece it together from four other screens.
  *
  * `permission` is the key Permissions grants against — the grid is generated
  * from THIS list, so a nav change can never leave a stale permission behind.
@@ -20,6 +23,7 @@
 export const ROUTES = {
   login: '/login',
   dashboard: '/dashboard',
+  alerts: '/alerts',
 
   ruleGroups: '/rules/groups',
   addRule: '/rules/groups/add',
@@ -50,6 +54,7 @@ export const ROUTES = {
 
 export const NAV = [
   { label: 'Dashboard', path: ROUTES.dashboard, icon: 'dashboard', permission: 'Dashboard', area: 'Cases' },
+  { label: 'Alerts', path: ROUTES.alerts, icon: 'bell', permission: 'Alerts', area: 'Cases' },
   {
     label: 'Rules',
     path: '/rules',

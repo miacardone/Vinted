@@ -8,6 +8,7 @@ import Icon from '@/components/ui/Icon';
 import { buildCaseColumns, DueCell } from '@/components/cases/caseColumns';
 import { AdvancedFiltersModal, EMPTY_FILTERS, applyFilters, countActive } from '@/components/cases/CaseFilters';
 import DocViewer from '@/components/workcase/DocViewer';
+import DisputeEditor from '@/components/workcase/DisputeEditor';
 import ActionsCard from '@/components/workcase/ActionsCard';
 import { NotesModal, PendModal, ReferralModal, ResubmitModal, RouteModal, UploadModal } from '@/components/workcase/CaseModals';
 import { CASES, getCase, getWorkableCases } from '@/data/cases';
@@ -320,6 +321,7 @@ function RelatedCases({ c, groups }) {
 const CENTRE_TABS = (docs) => [
   { value: 'merchant', label: `Merchant docs (${docs.merchant})` },
   { value: 'issuer', label: `Issuer docs (${docs.issuer})` },
+  { value: 'editor', label: 'Dispute editor' },
   { value: 'related', label: 'Related cases' },
 ];
 
@@ -388,9 +390,13 @@ function WorkView({ c }) {
           <div style={{ padding: '0 var(--s-3)' }}>
             <Tabs tabs={CENTRE_TABS(docCounts)} value={tab} onChange={setTab} />
           </div>
-          {tab === 'related'
-            ? <div className="card__body"><RelatedCases c={c} groups={groups} /></div>
-            : <DocViewer c={c} side={tab} />}
+          {tab === 'related' ? (
+            <div className="card__body"><RelatedCases c={c} groups={groups} /></div>
+          ) : tab === 'editor' ? (
+            <div className="card__body"><DisputeEditor c={c} onSubmitted={(msg) => notify(msg, 'success')} /></div>
+          ) : (
+            <DocViewer c={c} side={tab} />
+          )}
         </Card>
 
         <div className="stack stack--tight workcase__right">

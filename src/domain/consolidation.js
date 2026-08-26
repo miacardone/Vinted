@@ -23,6 +23,7 @@
 
 import brand from '@/brand/brand.config';
 import { isClosed } from '@/domain/statuses';
+import { titleCase } from '@/utils/format';
 
 const DAY = 86_400_000;
 
@@ -32,10 +33,17 @@ const KEY_BUILDERS = {
   same_seller: (c) => c.sellerId ?? null,
 };
 
+/**
+ * TENANT LEAK FIXED. These used to read "Seller {name}" and "Order {id}"
+ * literally — correct for Vinted, wrong the moment a tenant's vocabulary
+ * diverges (PriceLine's `seller` term is "supplier" and its `order` is a
+ * "booking"). Both now pull the noun from brand.terms like every other label
+ * in this build.
+ */
 const LABEL_BUILDERS = {
   same_card: (cases) => `Card •••• ${cases[0].ccLast4}`,
-  same_order: (cases) => `Order ${cases[0].orderId}`,
-  same_seller: (cases) => `Seller ${cases[0].seller}`,
+  same_order: (cases) => `${titleCase(brand.terms.order)} ${cases[0].orderId}`,
+  same_seller: (cases) => `${titleCase(brand.terms.seller)} ${cases[0].seller}`,
 };
 
 /**
