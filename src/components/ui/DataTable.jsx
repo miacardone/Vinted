@@ -121,8 +121,54 @@ export function Pagination({ total, page, pageSize, onPageChange, onPageSizeChan
 
 /* ---------- Table ---------- */
 
+/**
+ * Column order.
+ *
+ * Columns marked `pinned` render FIRST, in the order given, and cannot be
+ * dragged — that is what pinned means here. Actions is the case in point: it
+ * is the thing you came to the row to press, so it belongs at the start of the
+ * row where the eye lands, not stranded past fifteen columns of detail at the
+ * far right edge. Pinning it also means it cannot be dragged into the middle
+ * of the data, where it would read as another value.
+ *
+ * Everything else reorders by dragging its header. Order lives in component
+ * state keyed by column `key`, and RESETS when the column set itself changes —
+ * a case-type filter swaps in different columns, and carrying a stale order
+ * across that would silently drop or duplicate one.
+ */
+function useColumnOrder(columns) {
+  const pinned = columns.filter((c) => c.pinned);
+  const reorderable = columns.filter((c) => !c.pinned);
+
+  const [order, setOrder] = useState(() => reorderable.map((c) => c.key));
+
+  // Derived-state reset: cheaper and less error-prone than an effect, and it
+  // happens during render so the table never paints one frame of stale order.
+  const knownKeys = reorderable.map((c) => c.key).join('|');
+  const [lastKnownKeys, setLastKnownKeys] = useState(knownKeys);
+  if (knownKeys !== lastKnownKeys) {
+    setLastKnownKeys(knownKeys);
+    setOrder(reorderable.map((c) => c.key));
+  }
+
+  const byKey = Object.fromEntries(reorderable.map((c) => [c.key, c]));
+  const ordered = order.map((k) => byKey[k]).filter(Boolean);
+
+  const reorder = (dragKey, overKey, edge = 'left') => {
+    if (dragKey === overKey) return;
+    setOrder((prev) => {
+      const next = prev.filter((k) => k !== dragKey);
+      const overIdx = next.indexOf(overKey);
+      next.splice(edge === 'right' ? overIdx + 1 : overIdx, 0, dragKey);
+      return next;
+    });
+  };
+
+  return { columns: [...pinned, ...ordered], pinnedCount: pinned.length, reorder };
+}
+
 export function DataTable({
-  columns,
+  columns: columnsProp,
   rows,
   rowKey,
   density = 'comfortable',
@@ -136,13 +182,24 @@ export function DataTable({
 }) {
   const [hint, setHint] = useState(null);
   const [invalidId, setInvalidId] = useState(null);
+  const [dragColKey, setDragColKey] = useState(null);
+  const [dragOverCol, setDragOverCol] = useState(null);
   const fit = density === 'fit';
 
+  const { columns, pinnedCount, reorder } = useColumnOrder(columnsProp);
+
   const clearDrag = () => { setHint(null); setInvalidId(null); };
+  const clearColDrag = () => { setDragColKey(null); setDragOverCol(null); };
 
   const edgeOf = (e) => {
     const r = e.currentTarget.getBoundingClientRect();
     return e.clientY - r.top < r.height / 2 ? 'top' : 'bottom';
+  };
+
+  /** Which half of the header the pointer is over — drop before or after it. */
+  const colEdgeOf = (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return e.clientX - r.left < r.width / 2 ? 'left' : 'right';
   };
 
   if (!rows.length && empty) return <div className="dt__empty">{empty}</div>;
@@ -183,8 +240,9 @@ export function DataTable({
             )}
             {expansion && <th className="dt__lead" />}
 
-            {columns.map((c) => {
+            {columns.map((c, i) => {
               const active = sort?.key === c.key;
+              const draggableCol = i >= pinnedCount;
               const header = c.sortable && onSort ? (
                 <button type="button" className="dt__sort-btn" onClick={() => onSort(c.key)}>
                   <span className="truncate">{c.header}</span>
@@ -199,7 +257,32 @@ export function DataTable({
               );
 
               return (
-                <th key={c.key} style={{ width: widthFor(c), textAlign: c.align }}>
+                <th
+                  key={c.key}
+                  style={{ width: widthFor(c), textAlign: c.align }}
+                  className={[
+                    draggableCol ? 'dt__th--draggable' : 'dt__th--pinned',
+                    dragColKey === c.key ? 'is-dragging' : '',
+                    dragOverCol?.key === c.key ? `dt__th--drop-${dragOverCol.edge}` : '',
+                  ].filter(Boolean).join(' ')}
+                  draggable={draggableCol}
+                  onDragStart={draggableCol ? (e) => { e.dataTransfer.effectAllowed = 'move'; setDragColKey(c.key); } : undefined}
+                  onDragOver={draggableCol ? (e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    if (dragColKey && dragColKey !== c.key) setDragOverCol({ key: c.key, edge: colEdgeOf(e) });
+                  } : undefined}
+                  onDrop={draggableCol ? (e) => {
+                    e.preventDefault();
+                    if (dragColKey) reorder(dragColKey, c.key, dragOverCol?.key === c.key ? dragOverCol.edge : colEdgeOf(e));
+                    clearColDrag();
+                  } : undefined}
+                  onDragLeave={draggableCol ? () => setDragOverCol((p) => (p?.key === c.key ? null : p)) : undefined}
+                  onDragEnd={draggableCol ? clearColDrag : undefined}
+                >
+                  {/* Handle appears on hover — the column is draggable, but the
+                      header should not look like a control until you go for it. */}
+                  {draggableCol && <Icon name="drag" size={11} className="dt__th-handle" aria-hidden />}
                   {/* Fit mode truncates headers, so they get a tooltip. */}
                   {fit ? <Tooltip label={c.header}>{header}</Tooltip> : header}
                 </th>

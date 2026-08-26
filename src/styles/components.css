@@ -866,3 +866,33 @@
 .rule-row__count--info { color: var(--c-info); }
 .rule-row__label { font-size: var(--fs-small); color: var(--c-ink); min-width: 0; }
 .rule-row__label.is-clear { color: var(--c-ink-subtle); }
+
+/* ---------- Column reorder ---------- *
+   The handle only appears on hover: a header that always shows a grip reads
+   as a control before you need it, and there are up to sixteen of them. */
+
+.dt__th--draggable { cursor: grab; position: relative; }
+.dt__th--draggable:hover { background: var(--c-primary-wash); }
+.dt__th--draggable.is-dragging { opacity: 0.4; }
+.dt__th--draggable:active { cursor: grabbing; }
+
+.dt__th-handle { flex: none; color: transparent; margin-right: 3px; vertical-align: middle; transition: color 120ms ease; }
+.dt__th--draggable:hover .dt__th-handle { color: var(--c-primary); }
+
+/* Pinned columns are fenced off from the draggable ones, so the boundary is
+   visible rather than something you discover by failing to drag across it. */
+.dt__th--pinned { position: relative; }
+.dt__th--pinned::after {
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; width: 1px;
+  background: var(--c-line-strong);
+}
+.dt__th--pinned:last-of-type::after { display: none; }
+
+/* Drop indicator — a bar on the edge the column will land at, the same
+   language as the row-reorder drop line. */
+.dt__th--drop-left::before, .dt__th--drop-right::after {
+  content: ''; position: absolute; top: 4px; bottom: 4px; width: 3px;
+  border-radius: var(--r-pill); background: var(--c-primary); z-index: 3;
+}
+.dt__th--drop-left::before { left: -1.5px; }
+.dt__th--drop-right::after { right: -1.5px; }

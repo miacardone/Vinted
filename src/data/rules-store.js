@@ -84,11 +84,25 @@ export function addRule(rule) {
   return rule;
 }
 
-/** Back to the shipped set — used by the reset control on Rule groups. */
+/**
+ * Back to the shipped set — used by the reset control on Rule groups.
+ *
+ * CLEARS the key rather than writing the seed into it. Writing the seed left a
+ * stored payload behind, and the next page load parsed it into a NEW array, so
+ * `isCustomised()` — an identity check against the seed — reported true and
+ * the Reset control stayed on screen for a list nobody had touched.
+ */
 export function resetRules() {
-  commit(RULES);
+  try {
+    globalThis.localStorage?.removeItem(KEY);
+  } catch {
+    /* storage unavailable — the in-memory reset below still applies */
+  }
+  rules = RULES;
+  listeners.forEach((l) => l());
 }
 
+/** True once anything has been added, edited, reordered or deleted. */
 export const isCustomised = () => rules !== RULES;
 
 /**

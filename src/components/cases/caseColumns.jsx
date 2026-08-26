@@ -83,9 +83,26 @@ const RENDERERS = {
   dueDate: (r) => <DueCell dueDate={r.dueDate} />,
 };
 
-/** Table columns for a case-type filter, with renderers and export accessors. */
+/**
+ * Table columns for a case-type filter, with renderers and export accessors.
+ *
+ * SORTABLE BY DEFAULT. No column set `sortable`, and DataTable only draws the
+ * sort control for `c.sortable && onSort` — so Work case and Case management
+ * both held sort state, passed an `onSort` handler and computed a sorted list,
+ * while every header rendered as inert text. The machinery was complete and
+ * simply unreachable. Every column here is backed by a field on the row, so
+ * the default is on and a column opts out rather than in.
+ *
+ * `reference` is the one column whose key is not a row field — it shows the
+ * ARN for a chargeback and the item title for a claim — so it sorts on the
+ * value actually displayed via `sortValue` rather than on `undefined`.
+ */
 export function buildCaseColumns(caseType = 'all', { linkedIds } = {}) {
   return columnsFor(caseType).map((c) => ({
+    sortable: true,
+    ...(c.key === 'reference'
+      ? { sortValue: (row) => (row.caseType === 'chargeback' ? row.arn ?? '' : row.itemTitle ?? '') }
+      : null),
     ...c,
     cell: (row) => {
       const content = RENDERERS[c.key]?.(row) ?? <TruncatedText value={String(row[c.key] ?? '—')} />;

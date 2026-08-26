@@ -13,6 +13,7 @@ import { isClosed } from '@/domain/statuses';
 import { CASE_TYPES } from '@/domain/caseTypes';
 import { useToast } from '@/context/ToastContext';
 import { ROUTES } from '@/data/navigation';
+import { sortRows } from '@/utils/sortRows';
 import { readPref, writePref } from '@/utils/storage';
 import { formatCurrency, formatDate, formatDateTime, formatNumber } from '@/utils/format';
 
@@ -138,29 +139,20 @@ export function CaseManagement() {
 
   const filtered = useMemo(() => applyFilters(scoped, filters, search), [scoped, filters, search]);
 
-  const sorted = useMemo(() => {
-    const rows = [...filtered];
-    rows.sort((a, b) => {
-      const av = a[sort.key];
-      const bv = b[sort.key];
-      const cmp = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av ?? '').localeCompare(String(bv ?? ''));
-      return sort.dir === 'asc' ? cmp : -cmp;
-    });
-    return rows;
-  }, [filtered, sort]);
+  const allColumns = useMemo(() => buildCaseColumns(filters.caseType, { linkedIds }), [filters.caseType, linkedIds]);
+  const sorted = useMemo(() => sortRows(filtered, sort, allColumns), [filtered, sort, allColumns]);
 
   const pageRows = useMemo(() => sorted.slice((page - 1) * pageSize, page * pageSize), [sorted, page, pageSize]);
-
-  const allColumns = useMemo(() => buildCaseColumns(filters.caseType, { linkedIds }), [filters.caseType, linkedIds]);
   const columns = useMemo(() => {
     const visible = allColumns.filter((c) => !hidden.has(c.key));
+    // Actions leads and is pinned — see the note on Work case.
     return [
-      ...visible,
       {
         key: 'actions',
         header: 'Actions',
         fw: 6,
         width: '92px',
+        pinned: true,
         cell: (row) => (
           <div className="row row--xtight row--nowrap" onClick={(e) => e.stopPropagation()}>
             <IconButton icon="history" label="Case history" size={13} onClick={() => setHistoryRow(row)} />
@@ -168,6 +160,7 @@ export function CaseManagement() {
           </div>
         ),
       },
+      ...visible,
     ];
   }, [allColumns, hidden, navigate]);
 

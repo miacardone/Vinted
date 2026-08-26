@@ -50,11 +50,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
   color: var(--c-ink-subtle);
 }
 
-/* Case IDs, ARNs, amounts and dates read as data, not prose. */
+/* Case IDs, ARNs, amounts and dates read as data, not prose.
+   Tabular figures give every digit the same advance width, so a column of
+   amounts still lines up on the decimal — which was the only thing the
+   monospaced face was buying. */
 .mono {
-  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
 }
 
 .muted { color: var(--c-ink-muted); }

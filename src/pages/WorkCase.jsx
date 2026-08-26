@@ -19,6 +19,7 @@ import { STATUSES, getStatus } from '@/domain/statuses';
 import { useBrand } from '@/brand/BrandProvider';
 import { useToast } from '@/context/ToastContext';
 import { ROUTES } from '@/data/navigation';
+import { sortRows } from '@/utils/sortRows';
 import { readPref, writePref } from '@/utils/storage';
 import { formatCurrency, formatDate, formatDateTime, formatNumber } from '@/utils/format';
 
@@ -43,27 +44,20 @@ function RecordsView() {
   const [pageSize, setPageSize] = useState(10);
 
   const filtered = useMemo(() => applyFilters(rows, filters, search), [rows, filters, search]);
-  const sorted = useMemo(() => {
-    const out = [...filtered];
-    out.sort((a, b) => {
-      const av = a[sort.key]; const bv = b[sort.key];
-      const cmp = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av ?? '').localeCompare(String(bv ?? ''));
-      return sort.dir === 'asc' ? cmp : -cmp;
-    });
-    return out;
-  }, [filtered, sort]);
+  const allColumns = useMemo(() => buildCaseColumns(filters.caseType), [filters.caseType]);
+  const sorted = useMemo(() => sortRows(filtered, sort, allColumns), [filtered, sort, allColumns]);
 
   const pageRows = sorted.slice((page - 1) * pageSize, page * pageSize);
-
-  const allColumns = useMemo(() => buildCaseColumns(filters.caseType), [filters.caseType]);
+  // Actions leads and is pinned: it is what you came to the row to press, so
+  // it sits where the eye lands rather than past a dozen columns of detail.
   const columns = useMemo(() => [
-    ...allColumns.filter((c) => !hidden.has(c.key)),
     {
-      key: 'actions', header: 'Actions', fw: 5, width: '68px',
+      key: 'actions', header: 'Actions', fw: 5, width: '68px', pinned: true,
       cell: (row) => (
         <IconButton icon="wrench" label="Work this case" size={13} onClick={(e) => { e.stopPropagation(); navigate(ROUTES.workCaseDetail(row.id)); }} />
       ),
     },
+    ...allColumns.filter((c) => !hidden.has(c.key)),
   ], [allColumns, hidden, navigate]);
 
   const setDensityPref = (d) => {

@@ -48,10 +48,25 @@
   --c-series-contrast: #b3261e;
   --c-series-neutral: #6b7f82;
 
-  /* Type */
-  --font-display: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  /* Type — ONE family everywhere: headings, body copy, case numbers, amounts,
+     emails, reference IDs. This build ran three (Plus Jakarta Sans for
+     headings, Inter for copy, JetBrains Mono for data), which put two
+     typefaces inside a single table row — a JetBrains case ID next to an Inter
+     reason label — and three inside a card. At 11-13px that reads as
+     inconsistency rather than hierarchy, and the mono face was noticeably
+     wider, so the same column needed more room to say less.
+
+     Weight, size and colour carry the hierarchy instead. Figures keep their
+     alignment through `font-variant-numeric: tabular-nums` rather than a
+     monospaced face — that is the only property a proportional font was
+     actually missing here.
+
+     `--font-display` and `--font-mono` are kept as names, pointed at the same
+     stack, so no stylesheet still asking for one can reintroduce a second
+     typeface. */
+  --font-display: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-mono: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
 
   --fs-display: 1.75rem;
   --fs-h1: 1.25rem;
