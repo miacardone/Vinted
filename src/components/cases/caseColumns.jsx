@@ -3,7 +3,7 @@ import { TruncatedText } from '@/components/ui/Overlay';
 import Icon from '@/components/ui/Icon';
 import brand from '@/brand/brand.config';
 import { columnsFor, getCaseType } from '@/domain/caseTypes';
-import { getDocStatus, getOutcome, getStatus } from '@/domain/statuses';
+import { DOC_STATUSES, OUTCOMES, STATUSES, getDocStatus, getOutcome, getStatus } from '@/domain/statuses';
 import { formatCurrency, formatDueIn, formatShortDate, urgencyOf } from '@/utils/format';
 
 /**
@@ -13,6 +13,51 @@ import { formatCurrency, formatDueIn, formatShortDate, urgencyOf } from '@/utils
  * whichever identifier the row actually has — an ARN for a chargeback, the item
  * title for a claim — instead of showing both columns half-empty.
  */
+
+/**
+ * BADGE COLUMNS GET A FLOOR.
+ *
+ * Fit mode divides the width by weight, which is right for prose — "Item Not
+ * Rece…" is still readable and carries a tooltip. It is wrong for a badge. A
+ * badge is an atomic token you recognise by its shape and colour, so clipping
+ * it does not shorten the word, it changes it: at 1280 the status column was
+ * rendering "Represented" as "Represen" and doc status as "Not Requi", which
+ * read as different values or as a rendering fault. These are also the columns
+ * a reader looks at first, because they are the colour in the row.
+ *
+ * The floor is derived from the LONGEST label the column can actually hold,
+ * so adding a status with a longer name widens the column instead of quietly
+ * clipping it. `ch` keeps it tied to the font rather than to a pixel guess.
+ *
+ * Deliberately NOT applied to numeric columns: measured at 1280 and 1440, the
+ * amount column never clips — the tenant's amounts are six or seven characters
+ * — so a floor there would be complexity against a failure this data cannot
+ * produce.
+ */
+const widestLabel = (items) => items.reduce((max, i) => Math.max(max, i.label.length), 0);
+
+/**
+ * Floor = the longest label's text width, plus the badge's own chrome and the
+ * cell padding.
+ *
+ * The 0.77 is measured, not guessed. `ch` is the width of "0", which in Inter
+ * is about 30% wider than its average mixed-case letter — sizing at a flat 1ch
+ * per character produced columns ~20px wider than the badge inside them, which
+ * just moves the squeeze onto the prose columns next door. Against the rendered
+ * badges ("Represented" with a dot measures 95px, "Not Required" 86px) 0.77ch
+ * per character lands within a couple of pixels.
+ *
+ * Staying in `ch` rather than raw px means the floor tracks the font size
+ * instead of silently going wrong the next time the table's type scale moves.
+ */
+const badgeFloor = (items, { dot = false } = {}) =>
+  `calc(${(widestLabel(items) * 0.77).toFixed(2)}ch + ${dot ? 41 : 27}px)`;
+
+const BADGE_MIN_WIDTH = {
+  status: badgeFloor(STATUSES, { dot: true }),
+  outcome: badgeFloor(OUTCOMES),
+  docStatus: badgeFloor(DOC_STATUSES),
+};
 
 const schemeVar = (colorKey) => `var(--c-${colorKey.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)})`;
 
@@ -100,6 +145,7 @@ const RENDERERS = {
 export function buildCaseColumns(caseType = 'all', { linkedIds } = {}) {
   return columnsFor(caseType).map((c) => ({
     sortable: true,
+    ...(BADGE_MIN_WIDTH[c.key] ? { minWidth: BADGE_MIN_WIDTH[c.key] } : null),
     ...(c.key === 'reference'
       ? { sortValue: (row) => (row.caseType === 'chargeback' ? row.arn ?? '' : row.itemTitle ?? '') }
       : null),

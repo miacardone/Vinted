@@ -297,7 +297,9 @@
 
 .dt-wrap { width: 100%; }
 .dt-wrap--scroll { overflow-x: auto; }
-.dt-wrap--fit { overflow: visible; }
+/* Was `visible`: with column floors the grid can exceed its container, and a
+   table bleeding across the page is worse than one that scrolls inside its card. */
+.dt-wrap--fit { overflow-x: auto; }
 
 .dt { width: 100%; border-collapse: collapse; font-size: var(--fs-small); }
 .dt--fit { table-layout: fixed; font-size: var(--fs-micro); }

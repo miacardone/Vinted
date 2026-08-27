@@ -207,9 +207,34 @@ export function DataTable({
   const lead = (selection ? 1 : 0) + (expansion ? 1 : 0) + (rowDrag ? 1 : 0);
   const colSpan = columns.length + lead;
 
-  // Fit mode spreads the remaining width by each column's weight.
-  const totalWeight = columns.reduce((s, c) => s + (c.fw ?? 8), 0);
-  const widthFor = (c) => (fit ? `${((c.fw ?? 8) / totalWeight) * 100}%` : c.width);
+  /**
+   * Fit mode divides the width by weight — except for columns that declare a
+   * floor, which take that width first and leave the rest to be shared.
+   *
+   * WHY NOT `min-width`. Fit mode is `table-layout: fixed`, and fixed layout
+   * ignores min-width on a cell: the inline rule applied and the column still
+   * rendered at its old 73px. Fixed layout DOES honour an explicit width, so a
+   * floored column is given its floor as a width and the flexible columns
+   * divide `100% - (the floors)` between them. That sums to exactly 100%, so
+   * nothing overflows and no column is over-allocated.
+   *
+   * Floors exist for cells that must be read whole — see BADGE_MIN_WIDTH in
+   * caseColumns. Prose is deliberately left to compress; it truncates readably
+   * and carries a tooltip.
+   */
+  const floored = columns.filter((c) => c.minWidth);
+  const flexWeight = columns.reduce((s, c) => (c.minWidth ? s : s + (c.fw ?? 8)), 0);
+  const floorSum = floored.map((c) => c.minWidth).join(' + ');
+
+  const widthFor = (c) => {
+    if (!fit) return c.width;
+    if (c.minWidth) return c.minWidth;
+    if (!flexWeight) return undefined;
+    const share = `${c.fw ?? 8} / ${flexWeight}`;
+    return floorSum
+      ? `calc((100% - (${floorSum})) * ${share})`
+      : `calc(100% * ${share})`;
+  };
 
   const allSelected = rows.length > 0 && rows.every((r) => selection?.selected.has(rowKey(r)));
   const someSelected = rows.some((r) => selection?.selected.has(rowKey(r)));
