@@ -316,11 +316,24 @@ function RelatedCases({ c, groups }) {
  * Work view
  * ================================================================== */
 
+/**
+ * The tab bar is deliberately the three it has always been.
+ *
+ * The template builder lives INSIDE Merchant docs as a view toggle rather than
+ * as a fourth tab. That is the right home for it on its own merits — the
+ * template is assembled from the merchant evidence sitting in that tab, so
+ * putting them side by side means an analyst can read a document and draft
+ * against it without changing context.
+ */
 const CENTRE_TABS = (docs) => [
   { value: 'merchant', label: `Merchant docs (${docs.merchant})` },
   { value: 'issuer', label: `Issuer docs (${docs.issuer})` },
-  { value: 'editor', label: 'Template view' },
   { value: 'related', label: 'Related cases' },
+];
+
+const MERCHANT_VIEWS = [
+  { id: 'documents', label: 'Documents', icon: 'file' },
+  { id: 'template', label: 'Template', icon: 'checklist' },
 ];
 
 function WorkView({ c }) {
@@ -329,6 +342,7 @@ function WorkView({ c }) {
   const { notify } = useToast();
 
   const [tab, setTab] = useState('merchant');
+  const [merchantView, setMerchantView] = useState('documents');
   const [modal, setModal] = useState(null);
   const [status, setStatus] = useState(c.status);
   const [notes, setNotes] = useState(() => getCaseNotes(c.id));
@@ -390,8 +404,32 @@ function WorkView({ c }) {
           </div>
           {tab === 'related' ? (
             <div className="card__body"><RelatedCases c={c} groups={groups} /></div>
-          ) : tab === 'editor' ? (
-            <div className="card__body"><DisputeEditor c={c} onSubmitted={(msg) => notify(msg, 'success')} /></div>
+          ) : tab === 'merchant' ? (
+            <>
+              <div className="doc-toolbar" style={{ justifyContent: 'flex-start' }}>
+                <div className="seg" role="group" aria-label="Merchant docs view">
+                  {MERCHANT_VIEWS.map((v) => (
+                    <button
+                      key={v.id}
+                      type="button"
+                      className={`seg__btn ${merchantView === v.id ? 'is-active' : ''}`.trim()}
+                      onClick={() => setMerchantView(v.id)}
+                    >
+                      <Icon name={v.icon} size={12} /> {v.label}
+                    </button>
+                  ))}
+                </div>
+                <span className="micro subtle">
+                  {merchantView === 'documents'
+                    ? 'Evidence received from the merchant side of the case.'
+                    : 'Draft the response against that evidence, and redact anything that must not be sent.'}
+                </span>
+              </div>
+
+              {merchantView === 'documents'
+                ? <DocViewer c={c} side="merchant" />
+                : <div className="card__body"><DisputeEditor c={c} onSubmitted={(msg) => notify(msg, 'success')} /></div>}
+            </>
           ) : (
             <DocViewer c={c} side={tab} />
           )}
