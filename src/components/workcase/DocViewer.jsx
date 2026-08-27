@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import Icon from '@/components/ui/Icon';
-import { IconButton } from '@/components/ui/Surface';
+import { Badge, Button, IconButton } from '@/components/ui/Surface';
 import { Tooltip } from '@/components/ui/Overlay';
 import { useBrand } from '@/brand/BrandProvider';
 import { getCaseDocs } from '@/data/work-case';
 import { renderDocToCanvas } from '@/data/doc-raster';
 import { addBlocks, getPacket } from '@/data/packet-store';
+import { clearMarkup, getMarkup, getVersion, setMarkup, subscribe as subscribeMarkup } from '@/data/doc-markup-store';
 import RedactionStudio from '@/components/workcase/RedactionStudio';
 import { useToast } from '@/context/ToastContext';
 import { formatCurrency, formatDate } from '@/utils/format';
@@ -193,6 +194,10 @@ export function DocViewer({ c, side }) {
   const [layout, setLayout] = useState('single');
   const [zoom, setZoom] = useState(100);
   const [studio, setStudio] = useState(null);
+  const [showOriginal, setShowOriginal] = useState(false);
+
+  // Re-render when any document on this case gains or loses its markup.
+  useSyncExternalStore(subscribeMarkup, getVersion);
 
   /**
    * Redacting a case document means rasterising it first — see doc-raster.js.
@@ -200,11 +205,21 @@ export function DocViewer({ c, side }) {
    * the failure the studio exists to prevent.
    */
   const openRedaction = (doc) => {
-    setStudio({ id: `doc-${doc.id}`, title: doc.title, dataUrl: renderDocToCanvas(doc, c) });
+    const existing = getMarkup(c.id, doc.id);
+    setStudio({
+      id: `doc-${doc.id}`,
+      docId: doc.id,
+      title: doc.title,
+      // Re-opening works from the ALREADY-MARKED copy, never the source.
+      // Starting again from the original would silently resurrect pixels the
+      // analyst removed on the previous pass.
+      dataUrl: existing?.dataUrl ?? renderDocToCanvas(doc, c),
+    });
   };
 
   const safeIndex = Math.min(index, Math.max(docs.length - 1, 0));
   const active = docs[safeIndex];
+  const markup = active ? getMarkup(c.id, active.id) : null;
 
   if (!docs.length) {
     return <div className="doc-stage"><p className="small muted">No documents on this side of the case.</p></div>;
@@ -246,11 +261,39 @@ export function DocViewer({ c, side }) {
         <span>{brand.name} · Document viewer</span>
       </div>
 
+      {markup && (
+        <div className="doc-marked-bar">
+          <span className="row row--xtight">
+            <Badge tone="success" dot>Marked up</Badge>
+            <span className="micro subtle">
+              {markup.redactions.length
+                ? `${markup.redactions.length} redaction${markup.redactions.length === 1 ? '' : 's'} burned in`
+                : 'Annotated'} · {markup.audit.by}
+            </span>
+          </span>
+          <span className="row row--xtight">
+            <Button variant="ghost" size="sm" onClick={() => setShowOriginal((v) => !v)}>
+              {showOriginal ? 'Show marked-up' : 'Show original'}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              icon="trash"
+              onClick={() => { clearMarkup(c.id, active.id); setShowOriginal(false); notify('Markup discarded. The exhibit already in the packet is unaffected.', 'success'); }}
+            >
+              Discard
+            </Button>
+          </span>
+        </div>
+      )}
+
       <div className={`doc-stage ${layout === 'grid' ? 'doc-stage--grid' : ''}`.trim()}>
         {layout === 'single' ? (
           <div style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top center', width: '100%', display: 'flex', justifyContent: 'center' }}>
             <div className="doc-page-wrap">
-              <DocPage doc={active} c={c} brand={brand} />
+              {markup && !showOriginal
+                ? <img className="doc-page doc-page--image" src={markup.dataUrl} alt={`${active.title}, marked up`} />
+                : <DocPage doc={active} c={c} brand={brand} />}
               {/* Markup opens from the document itself, where the thing you
                   want to mark actually is — not from a toolbar above it. */}
               <Tooltip label="Mark up this document — black out, highlight, draw, annotate" wide>
@@ -277,18 +320,32 @@ export function DocViewer({ c, side }) {
         source={studio}
         onClose={() => setStudio(null)}
         onApply={(result) => {
+          const previous = getMarkup(c.id, studio.docId);
+          // Redactions accumulate across passes; the audit must list them all.
+          const redactions = [...(previous?.redactions ?? []), ...result.redactions];
+
+          // The viewer now shows this copy — applying has to be visible where
+          // the analyst was looking, not only inside the packet behind a tab.
+          setMarkup(c.id, studio.docId, { dataUrl: result.dataUrl, redactions, audit: result.audit });
+          setShowOriginal(false);
+
           getPacket(c);
           addBlocks(c.id, [{
             id: `rd-${Date.now()}`,
             kind: 'screenshot',
-            title: `${studio.title} (redacted)`,
+            title: `${studio.title} (marked up)`,
             dataUrl: result.dataUrl,
             included: true,
-            redactions: result.redactions,
+            redactions,
             audit: result.audit,
           }]);
           setStudio(null);
-          notify(`${result.redactions.length} region(s) redacted — added to the packet as an exhibit.`, 'success');
+
+          const parts = [
+            result.redactions.length ? `${result.redactions.length} redaction${result.redactions.length === 1 ? '' : 's'} burned in` : null,
+            result.audit.annotationCount ? `${result.audit.annotationCount} annotation${result.audit.annotationCount === 1 ? '' : 's'}` : null,
+          ].filter(Boolean).join(' · ');
+          notify(`${parts || 'Markup applied'} — the document now shows the marked-up copy.`, 'success');
         }}
       />
 

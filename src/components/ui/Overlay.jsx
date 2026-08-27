@@ -79,6 +79,15 @@ export function Tooltip({ label, side = 'top', wide = false, disabled = false, c
       onMouseLeave={hide}
       onFocus={show}
       onBlur={hide}
+      /*
+       * Dismiss on press as well as on leave. A tooltip whose trigger opens a
+       * modal never receives mouseleave — the button unmounts under the
+       * pointer — so the tip was left stranded on screen over the dialog with
+       * nothing to remove it. Hiding on the interaction itself is also just
+       * correct: once you have acted on a control, its label is noise.
+       */
+      onPointerDown={hide}
+      onClick={hide}
     >
       {children}
       {open && pos && createPortal(

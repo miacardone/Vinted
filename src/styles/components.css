@@ -1004,3 +1004,7 @@
 .markup-text-input { position: absolute; transform: translateY(-100%); font: inherit; font-size: var(--fs-small); font-weight: 600; padding: 1px 4px; border: 1px solid var(--c-primary); border-radius: 3px; background: #fff; min-width: 120px; }
 
 .redact__box--box { background: transparent; border: 2px solid var(--c-danger); }
+
+/* The marked-up copy replaces the generated document in the stage. */
+.doc-page--image { padding: 0; display: block; height: auto; }
+.doc-marked-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); flex-wrap: wrap; padding: var(--s-2) var(--s-3); background: var(--c-success-tint); border-top: 1px solid var(--c-line); border-bottom: 1px solid var(--c-line); }

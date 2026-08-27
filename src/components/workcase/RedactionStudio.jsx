@@ -40,13 +40,13 @@ const MIN_REGION = 0.004; // ~0.4% of a side — below this it was a stray click
  * end, 'free' follows the pointer, 'point' drops at a click.
  */
 export const TOOLS = [
-  { id: 'redact', label: 'Black out', icon: 'lock', shape: 'rect', destructive: true, hint: 'Fills the region with flat black. The information is gone — the safe default for names, IDs and addresses.' },
+  { id: 'redact', label: 'Black out', icon: 'blackoutBar', shape: 'rect', destructive: true, hint: 'Fills the region with flat black. The information is gone — the safe default for names, IDs and addresses.' },
   { id: 'pixelate', label: 'Pixelate', icon: 'grid', shape: 'rect', destructive: true, hint: 'Averages the region into blocks. Use for context you want readable as "something was here" — not for a short predictable string like a staff ID, where the structure that survives can be enough to guess it back.' },
-  { id: 'highlight', label: 'Highlight', icon: 'edit', shape: 'rect', hint: 'Draws attention to a passage without hiding it. Additive — nothing underneath is lost.' },
-  { id: 'box', label: 'Box', icon: 'single', shape: 'rect', hint: 'Outlines an area, for pointing at a delivery scan or a total.' },
-  { id: 'arrow', label: 'Arrow', icon: 'arrowUp', shape: 'line', hint: 'Points at one thing. Drag from where the eye starts to what it should land on.' },
-  { id: 'pen', label: 'Draw', icon: 'branch', shape: 'free', hint: 'Freehand. Circle a line item, tick a field, scribble a note.' },
-  { id: 'text', label: 'Text', icon: 'message', shape: 'point', hint: 'Click to place a caption — "signed for at 09:14" beside the scan that proves it.' },
+  { id: 'highlight', label: 'Highlight', icon: 'pencil', shape: 'rect', hint: 'Draws attention to a passage without hiding it. Additive — nothing underneath is lost.' },
+  { id: 'box', label: 'Box', icon: 'square', shape: 'rect', hint: 'Outlines an area, for pointing at a delivery scan or a total.' },
+  { id: 'arrow', label: 'Arrow', icon: 'arrowUpRight', shape: 'line', hint: 'Points at one thing. Drag from where the eye starts to what it should land on.' },
+  { id: 'pen', label: 'Draw', icon: 'scribble', shape: 'free', hint: 'Freehand. Circle a line item, tick a field, scribble a note.' },
+  { id: 'text', label: 'Note', icon: 'type', shape: 'point', hint: 'Click to drop a note. Click it again any time to edit the wording.' },
 ];
 
 export const getTool = (id) => TOOLS.find((t) => t.id === id) ?? TOOLS[0];
@@ -129,9 +129,22 @@ export async function applyRedactions(src, marks) {
       case 'pixelate': {
         const r = px(m);
         if (r.w < 1 || r.h < 1) break;
-        // Downsample then blow back up with smoothing off. The original
-        // samples are overwritten in place; no copy is kept.
-        const block = Math.max(6, Math.round(Math.min(r.w, r.h) / 6));
+        /*
+         * Downsample then blow back up with smoothing off. The original
+         * samples are overwritten in place; no copy is kept.
+         *
+         * BLOCK SIZE HAS TO BEAT THE TEXT, and the old `min(w,h)/6` did not.
+         * A redaction over a line of type is wide and short — a 500x29 strip —
+         * so `min` picked the height, divided it to about 5, and produced 6px
+         * blocks over 12px glyphs. The letters survived: sampling the result
+         * still returned crisp ink next to clean white. It looked like a
+         * texture and destroyed nothing.
+         *
+         * A block has to be at least as tall as a character to remove it, so
+         * the floor is 12px and the divisor is gentler. Capped at 48 so a large
+         * region does not collapse to four giant squares.
+         */
+        const block = Math.min(48, Math.max(12, Math.round(Math.min(r.w, r.h) / 3)));
         const tiny = document.createElement('canvas');
         tiny.width = Math.max(1, Math.ceil(r.w / block));
         tiny.height = Math.max(1, Math.ceil(r.h / block));
@@ -475,19 +488,26 @@ export function RedactionStudio({ open, source, onClose, onApply }) {
                   style={{ left: pct(m.x), top: pct(m.y), color: m.colour }}
                   value={m.text}
                   placeholder="Caption…"
+                  onPointerDown={(e) => e.stopPropagation()}
                   onChange={(e) => setMarks((p) => p.map((x) => (x.id === m.id ? { ...x, text: e.target.value } : x)))}
                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') setEditing(null); }}
                   onBlur={() => setEditing(null)}
                 />
               ) : (
-                <span
+                <button
                   key={m.id}
+                  type="button"
                   className="markup-text"
                   style={{ left: pct(m.x), top: pct(m.y), color: m.colour }}
-                  onDoubleClick={() => setEditing(m.id)}
+                  /* Single click, and it stops the canvas seeing the press —
+                     otherwise clicking a note with a tool active drew a new
+                     mark on top of the one you were trying to edit. */
+                  onPointerDown={(e) => { e.stopPropagation(); }}
+                  onClick={(e) => { e.stopPropagation(); setEditing(m.id); }}
+                  title="Click to edit this note"
                 >
-                  {m.text || 'Caption…'}
-                </span>
+                  {m.text || 'Empty note — click to write'}
+                </button>
               )
             ))}
 
@@ -554,7 +574,12 @@ export function RedactionStudio({ open, source, onClose, onApply }) {
                       </span>
                     </span>
                   </span>
-                  <IconButton icon="trash" label="Remove mark" tone="danger" size={13} onClick={() => setMarks((p) => p.filter((x) => x.id !== m.id))} />
+                  <span className="row row--xtight row--nowrap" style={{ flex: 'none' }}>
+                    {m.type === 'text' && (
+                      <IconButton icon="edit" label="Edit this note" size={13} onClick={() => setEditing(m.id)} />
+                    )}
+                    <IconButton icon="trash" label="Remove mark" tone="danger" size={13} onClick={() => setMarks((p) => p.filter((x) => x.id !== m.id))} />
+                  </span>
                 </div>
               ))}
             </div>
