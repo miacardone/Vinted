@@ -333,7 +333,7 @@ const CENTRE_TABS = (docs) => [
 
 const MERCHANT_VIEWS = [
   { id: 'documents', label: 'Documents', icon: 'file' },
-  { id: 'template', label: 'Template', icon: 'checklist' },
+  { id: 'template', label: 'Merchant Documentation Review', icon: 'checklist' },
 ];
 
 function WorkView({ c }) {

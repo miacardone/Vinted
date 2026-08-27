@@ -34,9 +34,13 @@ import { CURRENT_USER } from '@/data/people';
 const MIN_REGION = 0.004; // ~0.4% of a side — below this it was a stray click.
 
 const MODES = [
-  { id: 'solid', label: 'Solid box', icon: 'lock', hint: 'Fills the region with flat black. The information is gone — this is the safe default for names, IDs and addresses.' },
+  { id: 'solid', label: 'Redact', icon: 'lock', hint: 'Fills the region with flat black. The information is gone — this is the safe default for names, IDs and addresses.' },
   { id: 'pixelate', label: 'Pixelate', icon: 'grid', hint: 'Averages the region into blocks. Use for context you want readable as "something was here" — not for short strings like a staff ID, where the structure that survives can be enough to guess it back.' },
+  { id: 'highlight', label: 'Highlight', icon: 'edit', hint: 'Draws attention to a passage instead of hiding it — the tracking number an issuer should look at first. Additive, so nothing underneath is lost.' },
 ];
+
+/** Highlight ADDS ink; it is annotation, not redaction, and never counts as one. */
+const isRedacting = (mode) => mode !== 'highlight';
 
 /** Reads any File/Blob into a data URL so the canvas is never tainted. */
 export function fileToDataUrl(file) {
@@ -84,7 +88,19 @@ export async function applyRedactions(src, regions, mode) {
     const h = Math.round(r.h * canvas.height);
     if (w < 1 || h < 1) return;
 
-    if ((r.mode ?? mode) === 'pixelate') {
+    const treatment = r.mode ?? mode;
+
+    if (treatment === 'highlight') {
+      // Multiply keeps the text legible underneath rather than washing it out.
+      ctx.save();
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.fillStyle = '#FFE08A';
+      ctx.fillRect(x, y, w, h);
+      ctx.restore();
+      return;
+    }
+
+    if (treatment === 'pixelate') {
       // Downsample the region and blow it back up with smoothing off. The
       // original samples are overwritten in place; there is no copy kept.
       const block = Math.max(6, Math.round(Math.min(w, h) / 6));
@@ -189,12 +205,15 @@ export function RedactionStudio({ open, source, onClose, onApply }) {
     h: Math.abs(drag.to.y - drag.from.y),
   };
 
+  const redactions = useMemo(() => regions.filter((r) => isRedacting(r.mode)), [regions]);
+  const highlights = regions.length - redactions.length;
+
   const coverage = useMemo(
-    () => Math.min(regions.reduce((s, r) => s + r.w * r.h, 0) * 100, 100),
-    [regions],
+    () => Math.min(redactions.reduce((s, r) => s + r.w * r.h, 0) * 100, 100),
+    [redactions],
   );
 
-  const weakOnShortString = regions.some((r) => r.mode === 'pixelate' && ['employee_id', 'employee_name', 'payment_data'].includes(r.reasonId));
+  const weakOnShortString = redactions.some((r) => r.mode === 'pixelate' && ['employee_id', 'employee_name', 'payment_data'].includes(r.reasonId));
 
   const apply = async () => {
     setBusy(true);
@@ -202,7 +221,7 @@ export function RedactionStudio({ open, source, onClose, onApply }) {
       const flattened = await applyRedactions(source.dataUrl, regions, mode);
       onApply({
         dataUrl: flattened,
-        redactions: regions.map((r) => ({
+        redactions: redactions.map((r) => ({
           id: r.id,
           reasonId: r.reasonId,
           reasonLabel: getRedactionReason(r.reasonId).label,
@@ -213,7 +232,8 @@ export function RedactionStudio({ open, source, onClose, onApply }) {
         audit: {
           by: CURRENT_USER.email,
           at: new Date().toISOString(),
-          regionCount: regions.length,
+          regionCount: redactions.length,
+          highlightCount: highlights,
           modes: [...new Set(regions.map((r) => r.mode))],
         },
       });
@@ -236,11 +256,14 @@ export function RedactionStudio({ open, source, onClose, onApply }) {
           <span className="micro subtle" style={{ marginRight: 'auto' }}>
             {regions.length === 0
               ? 'Nothing marked yet.'
-              : `${regions.length} region${regions.length === 1 ? '' : 's'} · ${coverage.toFixed(1)}% of the image · irreversible once applied`}
+              : [
+                redactions.length ? `${redactions.length} redaction${redactions.length === 1 ? '' : 's'} · ${coverage.toFixed(1)}% of the image · irreversible once applied` : null,
+                highlights ? `${highlights} highlight${highlights === 1 ? '' : 's'}` : null,
+              ].filter(Boolean).join(' · ')}
           </span>
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
           <Button variant="primary" icon="lock" disabled={!regions.length || busy} onClick={apply}>
-            {busy ? 'Applying…' : `Apply ${regions.length || ''} redaction${regions.length === 1 ? '' : 's'}`}
+            {busy ? 'Applying…' : `Apply ${regions.length || ''} change${regions.length === 1 ? '' : 's'}`}
           </Button>
         </>
       }

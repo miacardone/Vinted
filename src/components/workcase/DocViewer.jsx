@@ -1,9 +1,13 @@
 import { useState } from 'react';
 import Icon from '@/components/ui/Icon';
-import { IconButton } from '@/components/ui/Surface';
+import { Button, IconButton } from '@/components/ui/Surface';
 import { Tooltip } from '@/components/ui/Overlay';
 import { useBrand } from '@/brand/BrandProvider';
 import { getCaseDocs } from '@/data/work-case';
+import { renderDocToCanvas } from '@/data/doc-raster';
+import { addBlocks, getPacket } from '@/data/packet-store';
+import RedactionStudio from '@/components/workcase/RedactionStudio';
+import { useToast } from '@/context/ToastContext';
 import { formatCurrency, formatDate } from '@/utils/format';
 
 /**
@@ -182,11 +186,22 @@ function DocPage({ doc, c, brand, thumb = false }) {
 
 export function DocViewer({ c, side }) {
   const brand = useBrand();
+  const { notify } = useToast();
   const docs = getCaseDocs(c.id)[side] ?? [];
 
   const [index, setIndex] = useState(0);
   const [layout, setLayout] = useState('single');
   const [zoom, setZoom] = useState(100);
+  const [studio, setStudio] = useState(null);
+
+  /**
+   * Redacting a case document means rasterising it first — see doc-raster.js.
+   * Boxes drawn over rendered HTML would leave every word in the DOM, which is
+   * the failure the studio exists to prevent.
+   */
+  const openRedaction = (doc) => {
+    setStudio({ id: `doc-${doc.id}`, title: doc.title, dataUrl: renderDocToCanvas(doc, c) });
+  };
 
   const safeIndex = Math.min(index, Math.max(docs.length - 1, 0));
   const active = docs[safeIndex];
@@ -219,6 +234,12 @@ export function DocViewer({ c, side }) {
           </div>
         )}
 
+        <Tooltip label="Draw redactions over this document. The result is a flattened copy attached to the packet — the original stays on the case untouched." wide>
+          <Button variant="secondary" size="sm" icon="lock" onClick={() => openRedaction(active)}>
+            Redact
+          </Button>
+        </Tooltip>
+
         <div className="row row--xtight row--nowrap">
           <IconButton icon="zoomOut" label="Zoom out" disabled={zoom <= 60} onClick={() => setZoom((z) => z - 20)} />
           <span className="micro mono" style={{ width: 34, textAlign: 'center' }}>{zoom}%</span>
@@ -245,6 +266,26 @@ export function DocViewer({ c, side }) {
           ))
         )}
       </div>
+
+      <RedactionStudio
+        open={Boolean(studio)}
+        source={studio}
+        onClose={() => setStudio(null)}
+        onApply={(result) => {
+          getPacket(c);
+          addBlocks(c.id, [{
+            id: `rd-${Date.now()}`,
+            kind: 'screenshot',
+            title: `${studio.title} (redacted)`,
+            dataUrl: result.dataUrl,
+            included: true,
+            redactions: result.redactions,
+            audit: result.audit,
+          }]);
+          setStudio(null);
+          notify(`${result.redactions.length} region(s) redacted — added to the packet as an exhibit.`, 'success');
+        }}
+      />
 
       {layout === 'single' && (
         <div className="doc-thumbs">

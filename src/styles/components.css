@@ -928,3 +928,6 @@
 .compiled__image { display: block; max-width: 100%; height: auto; border: 1px solid var(--c-line); border-radius: var(--r-sm); }
 .compiled__attachment { display: flex; gap: var(--s-2); align-items: flex-start; padding: var(--s-3); border: 1px dashed var(--c-line-strong); border-radius: var(--r-md); background: var(--c-surface-sunken); }
 .compiled__note { font-size: var(--fs-micro); color: var(--c-ink-muted); margin-top: var(--s-2); }
+
+/* Highlight is annotation, not redaction — translucent so the text reads through. */
+.redact__box--highlight { background: rgba(255, 224, 138, 0.55); border: 1px solid var(--c-warning); }
