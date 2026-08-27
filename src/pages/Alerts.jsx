@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { PageHeader, Card, Kpi, Tabs, Badge, Button, IconButton, EmptyState } from '@/components/ui/Surface';
+import { PageHeader, Card, Kpi, Tabs, SubTabs, Badge, Button, IconButton, EmptyState } from '@/components/ui/Surface';
+import PreDisputeAlerts from '@/pages/PreDisputeAlerts';
+import { preDisputeKpis } from '@/data/pre-dispute';
 import { Tooltip, TruncatedText } from '@/components/ui/Overlay';
 import Icon from '@/components/ui/Icon';
 import { DueCell } from '@/components/cases/caseColumns';
@@ -149,8 +151,11 @@ export function Alerts() {
   const alerts = useMemo(() => buildAlerts(), []);
   const summary = useMemo(() => alertSummary(alerts), [alerts]);
 
+  const [view, setView] = useState('operational');
   const [tab, setTab] = useState('all');
   const [acked, setAcked] = useState(readAck);
+
+  const preKpis = useMemo(() => preDisputeKpis(), []);
 
   const persist = (next) => {
     setAcked(next);
@@ -186,21 +191,47 @@ export function Alerts() {
     <>
       <PageHeader
         title="Alerts"
-        description="Deadlines, duplicate-refund exposure, evidence gaps and integration health — derived from the live case book, not a separate feed."
+        description="Two different things, deliberately kept apart. Operational alerts are about cases already in this console. Pre-dispute alerts arrive from the card networks before a chargeback exists — action one in time and there is no dispute to defend."
         meta={
-          <p className="page-head__desc">
-            <strong className="mono">{formatNumber(summary.critical)}</strong> critical ·{' '}
-            <strong className="mono">{formatNumber(summary.casesAffected)}</strong> {brand.terms.cases} affected ·
-            every row links to the {brand.terms.cases} behind it
-          </p>
+          view === 'operational' ? (
+            <p className="page-head__desc">
+              <strong className="mono">{formatNumber(summary.critical)}</strong> critical ·{' '}
+              <strong className="mono">{formatNumber(summary.casesAffected)}</strong> {brand.terms.cases} affected ·
+              every row links to the {brand.terms.cases} behind it
+            </p>
+          ) : (
+            <p className="page-head__desc">
+              <strong className="mono">{formatNumber(preKpis.deflected)}</strong> {brand.terms.chargebacks} prevented ·{' '}
+              <strong className="mono">{formatNumber(preKpis.open)}</strong> still inside their window
+            </p>
+          )
         }
-        actions={
+        actions={view !== 'operational' ? null : (
           <Tooltip label={`${ALERT_RULES.length} rules evaluate on every load. Nothing here is scheduled or cached — the numbers are recomputed from the book you are looking at.`} wide side="bottom">
             <span className="chip"><Icon name="info" size={12} /> {ALERT_RULES.length} rules active</span>
           </Tooltip>
-        }
+        )}
       />
 
+      {/*
+        Kept as one screen with two views rather than two nav entries: they are
+        both "what needs attention", and an operator should not have to know
+        which menu a network alert lives under. The split is explicit because
+        the two are genuinely different objects — one is a case, the other is a
+        chance to stop a case existing.
+      */}
+      <SubTabs
+        tabs={[
+          { value: 'operational', label: 'Operational', badge: summary.total - acked.size },
+          { value: 'pre_dispute', label: 'Pre-dispute (RDR, Ethoca, Verifi)', badge: preKpis.open },
+        ]}
+        value={view}
+        onChange={setView}
+      />
+
+      {view === 'pre_dispute' && <PreDisputeAlerts />}
+
+      {view === 'operational' && (
       <div className="stack">
         <div className="grid grid--4">
           <Card bodyClassName="card__body--tight">
@@ -281,6 +312,7 @@ export function Alerts() {
           </div>
         </Card>
       </div>
+      )}
     </>
   );
 }
