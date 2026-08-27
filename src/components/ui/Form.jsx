@@ -1,4 +1,4 @@
-import { useId } from 'react';
+import { useId, useState } from 'react';
 import Icon from '@/components/ui/Icon';
 import { Button } from '@/components/ui/Surface';
 
@@ -25,12 +25,49 @@ function Shell({ label, required, hint, error, htmlFor, children }) {
   );
 }
 
-export function TextField({ label, required, hint, error, id: providedId, className = '', ...rest }) {
+/**
+ * A password field gets a reveal toggle.
+ *
+ * Typing a password blind into a demo — on a shared screen, in front of a
+ * client — is where the typo happens, and the failure looks like a broken
+ * login rather than a fat finger. The button is a real toggle with its own
+ * label so the state is announced, not a decorative icon.
+ */
+export function TextField({ label, required, hint, error, id: providedId, className = '', type, ...rest }) {
   const generated = useId();
   const id = providedId ?? generated;
+  const [revealed, setRevealed] = useState(false);
+
+  const isPassword = type === 'password';
+  const inputType = isPassword && revealed ? 'text' : type;
+
+  const input = (
+    <input
+      id={id}
+      type={inputType}
+      className={`input ${error ? 'input--error' : ''} ${className}`.trim()}
+      aria-invalid={Boolean(error)}
+      {...rest}
+    />
+  );
+
   return (
     <Shell label={label} required={required} hint={hint} error={error} htmlFor={id}>
-      <input id={id} className={`input ${error ? 'input--error' : ''} ${className}`.trim()} aria-invalid={Boolean(error)} {...rest} />
+      {isPassword ? (
+        <span className="input-reveal">
+          {input}
+          <button
+            type="button"
+            className="input-reveal__btn"
+            onClick={() => setRevealed((v) => !v)}
+            aria-label={revealed ? 'Hide password' : 'Show password'}
+            aria-pressed={revealed}
+            tabIndex={-1}
+          >
+            <Icon name={revealed ? 'eyeOff' : 'eye'} size={15} />
+          </button>
+        </span>
+      ) : input}
     </Shell>
   );
 }

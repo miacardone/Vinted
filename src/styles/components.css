@@ -931,3 +931,16 @@
 
 /* Highlight is annotation, not redaction — translucent so the text reads through. */
 .redact__box--highlight { background: rgba(255, 224, 138, 0.55); border: 1px solid var(--c-warning); }
+
+/* Password reveal — the button sits inside the field's own box so the input
+   keeps its full width and the focus ring still frames the whole control. */
+.input-reveal { position: relative; display: block; }
+.input-reveal .input { padding-right: 34px; width: 100%; }
+.input-reveal__btn {
+  position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
+  display: flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; padding: 0;
+  border: 0; background: transparent; border-radius: var(--r-sm);
+  color: var(--c-ink-subtle); cursor: pointer;
+}
+.input-reveal__btn:hover { color: var(--c-ink); background: var(--c-surface-sunken); }
