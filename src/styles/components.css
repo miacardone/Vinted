@@ -618,7 +618,13 @@
   font-size: 10px; line-height: 1.55; color: #1a2435;
   display: flex; flex-direction: column; gap: 9px;
 }
-.doc-page--thumb { padding: 10px; font-size: 5px; gap: 4px; max-width: none; cursor: pointer; }
+/* A THUMBNAIL IS A SCALED PAGE, NOT A NARROW ONE.
+   This used to shrink the type to 5px and let the content reflow into a 92px
+   column, so every "page" became a tall ragged strip of wrapped words at a
+   wildly wrong aspect — nothing like the document it stood for. The page now
+   renders at its true size inside a fixed A4-proportioned frame and is scaled
+   down by transform, which is what makes a miniature read as the page. */
+.doc-page--thumb { position: absolute; top: 0; left: 0; width: 520px; height: 736px; max-width: none; cursor: pointer; transform-origin: top left; box-shadow: none; border: 0; }
 .doc-page__brand { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid var(--c-primary); padding-bottom: 7px; }
 .doc-page__logo { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 12px; color: var(--c-primary-deep); }
 .doc-page__meta { font-family: var(--font-mono); font-size: 8px; color: #5a6678; text-align: right; }
@@ -629,9 +635,33 @@
 .doc-page__sig { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--c-line); }
 
 .doc-thumbs { display: flex; gap: var(--s-2); overflow-x: auto; padding: var(--s-2) var(--s-3); border-top: 1px solid var(--c-line); }
-.doc-thumb { flex: none; width: 92px; border: 1px solid var(--c-line); border-radius: var(--r-sm); overflow: hidden; background: #fff; padding: 0; cursor: pointer; }
+
+/* `--thumb-w` is unitless so it can drive both the width and the scale factor. */
+.doc-thumb { --thumb-w: 86; flex: none; width: calc(var(--thumb-w) * 1px); border: 1px solid var(--c-line); border-radius: var(--r-sm); overflow: hidden; background: #fff; padding: 0; cursor: pointer; }
 .doc-thumb.is-active { border-color: var(--c-primary); box-shadow: 0 0 0 1px var(--c-primary); }
-.doc-thumb__label { display: block; padding: 3px; font-size: var(--fs-nano); color: var(--c-ink-muted); border-top: 1px solid var(--c-line); text-align: center; }
+.doc-thumb__label { display: block; padding: 3px; font-size: var(--fs-nano); color: var(--c-ink-muted); border-top: 1px solid var(--c-line); text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.doc-thumb__frame { position: relative; display: block; width: 100%; aspect-ratio: 1 / 1.414; overflow: hidden; background: #fff; }
+.doc-thumb .doc-page--thumb { transform: scale(calc(var(--thumb-w) / 520)); }
+
+/* Grid view is the same object at a larger size. */
+.doc-tile { --thumb-w: 170; border: 1px solid var(--c-line); border-radius: var(--r-sm); overflow: hidden; background: #fff; padding: 0; cursor: pointer; width: calc(var(--thumb-w) * 1px); }
+.doc-tile:hover { border-color: var(--c-primary); }
+.doc-tile .doc-page--thumb { transform: scale(calc(var(--thumb-w) / 520)); }
+
+.doc-stage--grid { justify-items: center; }
+
+/* Markup entry point, floated on the document itself. */
+.doc-page-wrap { position: relative; display: flex; justify-content: center; }
+.doc-markup-btn {
+  position: absolute; top: 8px; right: 8px; z-index: 2;
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; padding: 0;
+  border: 1px solid var(--c-line); border-radius: var(--r-md);
+  background: var(--c-surface); color: var(--c-ink-muted);
+  cursor: pointer; box-shadow: var(--shadow-card);
+}
+.doc-markup-btn:hover { color: var(--c-primary); border-color: var(--c-primary); }
 
 /* Actions tiles */
 .action-tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--s-2); }
@@ -944,3 +974,33 @@
   color: var(--c-ink-subtle); cursor: pointer;
 }
 .input-reveal__btn:hover { color: var(--c-ink); background: var(--c-surface-sunken); }
+
+/* ---------- Markup studio ---------- */
+
+.markup-bar { display: flex; align-items: center; gap: 3px; padding: var(--s-2); margin-bottom: var(--s-2); border: 1px solid var(--c-line); border-radius: var(--r-md); background: var(--c-surface-sunken); flex-wrap: wrap; }
+.markup-bar__btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; padding: 0;
+  border: 1px solid transparent; border-radius: var(--r-sm);
+  background: transparent; color: var(--c-ink-muted); cursor: pointer;
+}
+.markup-bar__btn:hover:not(:disabled) { background: var(--c-surface); color: var(--c-ink); }
+.markup-bar__btn.is-active { background: var(--c-primary); border-color: var(--c-primary); color: #fff; }
+.markup-bar__btn.is-active.is-destructive { background: var(--c-danger); border-color: var(--c-danger); }
+.markup-bar__btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.markup-bar__sep { width: 1px; height: 18px; background: var(--c-line-strong); margin: 0 4px; }
+.markup-bar__swatch { width: 18px; height: 18px; padding: 0; border: 2px solid transparent; border-radius: 50%; cursor: pointer; }
+.markup-bar__swatch.is-active { border-color: var(--c-ink); box-shadow: 0 0 0 1px #fff inset; }
+
+/* The cursor states what the active tool will do. */
+.markup--rect .redact__canvas, .redact__canvas.markup--rect { cursor: crosshair; }
+.markup--free { cursor: crosshair; }
+.markup--line { cursor: crosshair; }
+.markup--point { cursor: text; }
+
+.markup-layer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+
+.markup-text { position: absolute; transform: translateY(-100%); font-size: var(--fs-small); font-weight: 600; background: rgba(255,255,255,0.92); padding: 1px 4px; border-radius: 3px; white-space: nowrap; cursor: text; }
+.markup-text-input { position: absolute; transform: translateY(-100%); font: inherit; font-size: var(--fs-small); font-weight: 600; padding: 1px 4px; border: 1px solid var(--c-primary); border-radius: 3px; background: #fff; min-width: 120px; }
+
+.redact__box--box { background: transparent; border: 2px solid var(--c-danger); }

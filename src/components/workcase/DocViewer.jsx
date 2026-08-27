@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import Icon from '@/components/ui/Icon';
-import { Button, IconButton } from '@/components/ui/Surface';
+import { IconButton } from '@/components/ui/Surface';
 import { Tooltip } from '@/components/ui/Overlay';
 import { useBrand } from '@/brand/BrandProvider';
 import { getCaseDocs } from '@/data/work-case';
@@ -234,12 +234,6 @@ export function DocViewer({ c, side }) {
           </div>
         )}
 
-        <Tooltip label="Draw redactions over this document. The result is a flattened copy attached to the packet — the original stays on the case untouched." wide>
-          <Button variant="secondary" size="sm" icon="lock" onClick={() => openRedaction(active)}>
-            Redact
-          </Button>
-        </Tooltip>
-
         <div className="row row--xtight row--nowrap">
           <IconButton icon="zoomOut" label="Zoom out" disabled={zoom <= 60} onClick={() => setZoom((z) => z - 20)} />
           <span className="micro mono" style={{ width: 34, textAlign: 'center' }}>{zoom}%</span>
@@ -255,12 +249,23 @@ export function DocViewer({ c, side }) {
       <div className={`doc-stage ${layout === 'grid' ? 'doc-stage--grid' : ''}`.trim()}>
         {layout === 'single' ? (
           <div style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top center', width: '100%', display: 'flex', justifyContent: 'center' }}>
-            <DocPage doc={active} c={c} brand={brand} />
+            <div className="doc-page-wrap">
+              <DocPage doc={active} c={c} brand={brand} />
+              {/* Markup opens from the document itself, where the thing you
+                  want to mark actually is — not from a toolbar above it. */}
+              <Tooltip label="Mark up this document — black out, highlight, draw, annotate" wide>
+                <button type="button" className="doc-markup-btn" onClick={() => openRedaction(active)} aria-label="Mark up this document">
+                  <Icon name="edit" size={15} />
+                </button>
+              </Tooltip>
+            </div>
           </div>
         ) : (
           docs.map((d, i) => (
-            <button key={d.id} type="button" style={{ border: 0, background: 'transparent', padding: 0, cursor: 'pointer' }} onClick={() => { setIndex(i); setLayout('single'); }}>
-              <DocPage doc={d} c={c} brand={brand} thumb />
+            <button key={d.id} type="button" className="doc-tile" onClick={() => { setIndex(i); setLayout('single'); }}>
+              <span className="doc-thumb__frame">
+                <DocPage doc={d} c={c} brand={brand} thumb />
+              </span>
               <span className="doc-thumb__label">{d.title}</span>
             </button>
           ))
@@ -297,7 +302,9 @@ export function DocViewer({ c, side }) {
               onClick={() => setIndex(i)}
               aria-label={`${d.title}, page ${i + 1}`}
             >
-              <DocPage doc={d} c={c} brand={brand} thumb />
+              <span className="doc-thumb__frame">
+                <DocPage doc={d} c={c} brand={brand} thumb />
+              </span>
               <span className="doc-thumb__label">{i + 1}</span>
             </button>
           ))}
