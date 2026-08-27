@@ -59,11 +59,20 @@ export function NotesModal({ open, onClose, notes, onAdd }) {
 
 /* ---------- Upload documents ---------- */
 
+/**
+ * Upload documents.
+ *
+ * This used to keep only `{name, size}` and hand the caller a count, so the
+ * files themselves were dropped on the floor: the modal said "2 documents
+ * uploaded" and nothing was uploaded anywhere. It now passes the real File
+ * objects up, and Work case turns them into evidence blocks on the case's
+ * packet — which is what makes "just drop your own PDF in" a true statement.
+ */
 export function UploadModal({ open, onClose, onDone }) {
   const [files, setFiles] = useState([]);
   const [dragging, setDragging] = useState(false);
 
-  const add = (list) => setFiles((f) => [...f, ...Array.from(list).map((x) => ({ name: x.name, size: x.size }))]);
+  const add = (list) => setFiles((f) => [...f, ...Array.from(list)]);
 
   return (
     <Modal
@@ -73,7 +82,7 @@ export function UploadModal({ open, onClose, onDone }) {
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={!files.length} onClick={() => { onDone(`${files.length} document(s) uploaded.`); setFiles([]); }}>Upload</Button>
+          <Button variant="primary" disabled={!files.length} onClick={() => { onDone(files); setFiles([]); }}>Upload</Button>
         </>
       }
     >
@@ -86,7 +95,7 @@ export function UploadModal({ open, onClose, onDone }) {
         >
           <span className="empty__glyph"><Icon name="upload" size={18} /></span>
           <span className="small strong">Drop files here, or click to choose</span>
-          <span className="micro subtle">PDF, PNG or JPG · up to 10 MB each</span>
+          <span className="micro subtle">PDF, PNG or JPG · up to 10 MB each · images go through redaction, other files attach as supplied</span>
           <input type="file" multiple accept=".pdf,.png,.jpg,.jpeg" className="sr-only" onChange={(e) => add(e.target.files)} />
         </label>
 

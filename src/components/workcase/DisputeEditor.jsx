@@ -4,7 +4,11 @@ import { TextAreaField } from '@/components/ui/Form';
 import { Tooltip } from '@/components/ui/Overlay';
 import Icon from '@/components/ui/Icon';
 import RedactionStudio, { fileToDataUrl } from '@/components/workcase/RedactionStudio';
-import { BLOCK_KINDS, buildDefaultPacket, drawSampleScreenshot } from '@/data/dispute-packet';
+import { blockKind, drawSampleScreenshot } from '@/data/dispute-packet';
+import { blocksFromFiles, resetPacket } from '@/data/packet-store';
+import { usePacket } from '@/hooks/usePacket';
+import { assessPacket, strategyFor } from '@/domain/evidence';
+import PacketPreview from '@/components/workcase/PacketPreview';
 import { CURRENT_USER } from '@/data/people';
 import { useBrand } from '@/brand/BrandProvider';
 import { useToast } from '@/context/ToastContext';
@@ -59,6 +63,34 @@ function EvidenceBlock({ block }) {
         </span>
       </span>
       <Badge tone="success" dot>On file</Badge>
+    </div>
+  );
+}
+
+/**
+ * A file the merchant supplied themselves — most often a PDF representment
+ * they wrote outside this console.
+ *
+ * It counts as evidence and can satisfy a checklist item, but this build
+ * cannot open or redact a PDF, and saying so plainly matters: a file shown
+ * with the same green "reviewed" treatment as a redacted screenshot would
+ * imply somebody had checked it for staff data when nobody has.
+ */
+function AttachmentBlock({ block }) {
+  return (
+    <div className="row row--between row--nowrap packet__evidence">
+      <span className="row row--xtight row--nowrap" style={{ minWidth: 0 }}>
+        <Icon name="file" size={15} className="subtle" />
+        <span style={{ minWidth: 0 }}>
+          <span className="small strong truncate" style={{ display: 'block' }}>{block.title}</span>
+          <span className="nano subtle">
+            {block.mimeType}{block.size ? ` · ${Math.max(1, Math.round(block.size / 1024))} KB` : ''} · supplied by the merchant
+          </span>
+        </span>
+      </span>
+      <Tooltip label="Attached as supplied. This console cannot open or redact a PDF, so it has not been checked for staff data — review it before submitting." wide>
+        <Badge tone="warning" dot>Not reviewed</Badge>
+      </Tooltip>
     </div>
   );
 }
@@ -125,17 +157,18 @@ export function DisputeEditor({ c, onSubmitted }) {
   const brand = useBrand();
   const { notify } = useToast();
 
-  const [packet, setPacket] = useState(() => buildDefaultPacket(c));
+  // The packet lives in a per-case store, not in this component: the upload
+  // control sits in the Work case toolbar, outside this tree, and needs to put
+  // files somewhere the editor will see them.
+  const [packet, setPacket] = usePacket(c);
   const [studio, setStudio] = useState(null);
   const [dragging, setDragging] = useState(false);
+  const [preview, setPreview] = useState(false);
   const fileRef = useRef(null);
   const rootRef = useRef(null);
 
-  // A different case is a different packet — never carry one case's draft on
-  // to another.
-  useEffect(() => { setPacket(buildDefaultPacket(c)); }, [c.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const blocked = useMemo(() => blockedActions(c.id), [c.id]);
+  const assessment = useMemo(() => assessPacket(c, packet?.blocks ?? []), [c, packet]);
   const representmentBlocked = blocked.get('representment');
 
   const update = (id, next) => setPacket((p) => ({ ...p, blocks: p.blocks.map((b) => (b.id === id ? next : b)) }));
@@ -158,7 +191,7 @@ export function DisputeEditor({ c, onSubmitted }) {
       blocks: [...p.blocks, { id, kind: 'screenshot', title, dataUrl, included: true, redactions: null, audit: null }],
     }));
     return id;
-  }, []);
+  }, [setPacket]);
 
   const addNarrative = () => setPacket((p) => ({
     ...p,
@@ -168,16 +201,20 @@ export function DisputeEditor({ c, onSubmitted }) {
   /* --- Image intake: paste, drop, file picker, generated sample --------- */
 
   const ingestFiles = useCallback(async (files) => {
-    const images = Array.from(files).filter((f) => f.type.startsWith('image/'));
-    if (!images.length) return;
+    const list = Array.from(files);
+    if (!list.length) return;
 
-    for (const file of images) {
-      // eslint-disable-next-line no-await-in-loop
-      const dataUrl = await fileToDataUrl(file);
-      addScreenshot(dataUrl, file.name || 'Pasted screenshot');
-    }
-    notify(`${pluralise(images.length, 'screenshot')} added — redact before including.`, 'success');
-  }, [addScreenshot, notify]);
+    const blocks = await blocksFromFiles(list, fileToDataUrl);
+    setPacket((p) => ({ ...p, blocks: [...p.blocks, ...blocks] }));
+
+    const images = blocks.filter((b) => b.kind === 'screenshot').length;
+    const docs = blocks.length - images;
+    notify(
+      [images ? `${pluralise(images, 'screenshot')} added — redact before including` : null,
+        docs ? `${pluralise(docs, 'document')} attached` : null].filter(Boolean).join(' · '),
+      'success',
+    );
+  }, [notify, setPacket]);
 
   /**
    * Paste is bound to the document while this tab is mounted, because a paste
@@ -227,11 +264,26 @@ export function DisputeEditor({ c, onSubmitted }) {
   const unredacted = packet.blocks.filter((b) => b.kind === 'screenshot' && !b.redactions?.length && b.included);
   const emptyNarrative = included.filter((b) => b.kind === 'narrative' && !b.body.trim());
 
+  /**
+   * BLOCKING vs CAUTION, kept apart deliberately.
+   *
+   * An unredacted screenshot is a hard stop — sending staff data to an issuer
+   * is not a judgement call. Missing evidence is not: an analyst may know the
+   * carrier file is coming, or that this one is worth filing thin. So it warns
+   * and lets them through.
+   *
+   * What it must never do is say "Ready to submit" while the checklist shows
+   * two required exhibits missing, which is what it did before this split —
+   * the same class of false confirmation as the toast on a rule that was never
+   * saved.
+   */
   const problems = [
     ...(unredacted.length ? [`${pluralise(unredacted.length, 'screenshot')} still unredacted`] : []),
     ...(emptyNarrative.length ? [`${pluralise(emptyNarrative.length, 'empty narrative block')} to fill or remove`] : []),
     ...(representmentBlocked ? [representmentBlocked.title] : []),
   ];
+
+  const cautions = assessment.missingRequired.map((i) => `No ${i.label.toLowerCase()} attached`);
 
   const redactionCount = packet.blocks.reduce((s, b) => s + (b.redactions?.length ?? 0), 0);
 
@@ -240,6 +292,11 @@ export function DisputeEditor({ c, onSubmitted }) {
       `Packet submitted — ${pluralise(included.length, 'block')}, ${pluralise(redactionCount, 'redaction')} applied.`,
     );
   };
+
+  // Guard sits BELOW every hook — an early return above `useEffect`/`useCallback`
+  // would make the hook order conditional. The store creates a packet on first
+  // access, so this only fires for a case that has none.
+  if (!packet) return null;
 
   return (
     <div
@@ -285,9 +342,9 @@ export function DisputeEditor({ c, onSubmitted }) {
               <header className="packet__block-head">
                 <span className="row row--xtight row--nowrap" style={{ minWidth: 0 }}>
                   <span className="packet__block-no">{i + 1}</span>
-                  <Icon name={BLOCK_KINDS[block.kind].icon} size={13} className="subtle" />
+                  <Icon name={blockKind(block.kind).icon} size={13} className="subtle" />
                   <span className="micro strong truncate">{block.title}</span>
-                  <Badge tone="neutral">{BLOCK_KINDS[block.kind].label}</Badge>
+                  <Badge tone="neutral">{blockKind(block.kind).label}</Badge>
                 </span>
 
                 <span className="row row--xtight row--nowrap">
@@ -305,6 +362,7 @@ export function DisputeEditor({ c, onSubmitted }) {
               <div className="packet__block-body">
                 {block.kind === 'narrative' && <NarrativeBlock block={block} onChange={(next) => update(block.id, next)} />}
                 {block.kind === 'evidence' && <EvidenceBlock block={block} />}
+                {block.kind === 'attachment' && <AttachmentBlock block={block} />}
                 {block.kind === 'screenshot' && (
                   <ScreenshotBlock
                     block={block}
@@ -331,18 +389,68 @@ export function DisputeEditor({ c, onSubmitted }) {
             <div className="row row--between"><span className="micro muted">Reason code</span><span className="micro mono strong">{c.reasonCode}</span></div>
           </div>
 
+          {/*
+            The checklist is keyed to this case's reason code, so it asks for
+            what this argument is actually won on — delivery evidence for a
+            non-receipt code, authorisation results for a fraud one. Without it
+            the editor can assemble a packet but cannot say whether it is worth
+            filing.
+          */}
+          <div className="packet__panel">
+            <div className="row row--between">
+              <span className="t-section-label">Evidence for {c.reasonCode}</span>
+              <Badge tone={assessment.readiness === 100 ? 'success' : assessment.readiness >= 50 ? 'warning' : 'danger'}>
+                {assessment.readiness}%
+              </Badge>
+            </div>
+
+            <div className="meter"><div className="meter__fill" style={{ width: `${assessment.readiness}%` }} /></div>
+
+            <Tooltip label={strategyFor(c)} wide>
+              <span className="micro subtle row row--xtight" style={{ cursor: 'help' }}>
+                <Icon name="info" size={11} /> What wins this code
+              </span>
+            </Tooltip>
+
+            <div className="stack stack--xtight">
+              {assessment.items.map((item) => (
+                <Tooltip key={item.id} label={item.satisfied ? `Matched by "${item.satisfiedBy}"` : item.hint} wide>
+                  <span className="row row--xtight row--nowrap check-row">
+                    <Icon
+                      name={item.satisfied ? 'check' : item.required ? 'alert' : 'clock'}
+                      size={12}
+                      style={{ color: item.satisfied ? 'var(--c-success)' : item.required ? 'var(--c-danger)' : 'var(--c-ink-subtle)', flex: 'none' }}
+                    />
+                    <span className={`micro truncate ${item.satisfied ? '' : 'subtle'}`}>{item.label}</span>
+                    {!item.required && <span className="nano subtle">optional</span>}
+                  </span>
+                </Tooltip>
+              ))}
+            </div>
+          </div>
+
           <div className="packet__panel">
             <span className="t-section-label">Before submission</span>
-            {problems.length === 0 ? (
+            {problems.length === 0 && cautions.length === 0 && (
               <span className="row row--xtight micro" style={{ color: 'var(--c-success)' }}>
                 <Icon name="check" size={13} /> Ready to submit
               </span>
-            ) : (
-              problems.map((p) => (
-                <span key={p} className="row row--xtight micro" style={{ color: 'var(--c-danger)' }}>
-                  <Icon name="alert" size={13} /> {p}
-                </span>
-              ))
+            )}
+
+            {problems.map((p) => (
+              <span key={p} className="row row--xtight micro" style={{ color: 'var(--c-danger)' }}>
+                <Icon name="alert" size={13} /> {p}
+              </span>
+            ))}
+
+            {cautions.map((p) => (
+              <span key={p} className="row row--xtight micro" style={{ color: 'var(--c-warning)' }}>
+                <Icon name="clock" size={13} /> {p}
+              </span>
+            ))}
+
+            {problems.length === 0 && cautions.length > 0 && (
+              <span className="nano subtle">Not blocking — you can file without these, but expect a harder fight.</span>
             )}
 
             <Tooltip
@@ -357,11 +465,11 @@ export function DisputeEditor({ c, onSubmitted }) {
                 <Button
                   variant="primary"
                   block
-                  icon="send"
+                  icon="file"
                   disabled={problems.length > 0 || (unredacted.length > 0 && !CAN_INCLUDE_UNREDACTED)}
-                  onClick={submit}
+                  onClick={() => setPreview(true)}
                 >
-                  Submit packet
+                  Compile packet
                 </Button>
               </span>
             </Tooltip>
@@ -388,6 +496,16 @@ export function DisputeEditor({ c, onSubmitted }) {
           )}
         </aside>
       </div>
+
+      <PacketPreview
+        open={preview}
+        onClose={() => setPreview(false)}
+        c={c}
+        packet={packet}
+        assessment={assessment}
+        canSubmit={problems.length === 0}
+        onSubmit={() => { setPreview(false); submit(); }}
+      />
 
       <RedactionStudio
         open={Boolean(studio)}

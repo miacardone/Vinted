@@ -9,6 +9,8 @@ import { buildCaseColumns, DueCell } from '@/components/cases/caseColumns';
 import { AdvancedFiltersModal, EMPTY_FILTERS, applyFilters, countActive } from '@/components/cases/CaseFilters';
 import DocViewer from '@/components/workcase/DocViewer';
 import DisputeEditor from '@/components/workcase/DisputeEditor';
+import { fileToDataUrl } from '@/components/workcase/RedactionStudio';
+import { addBlocks, blocksFromFiles, getPacket } from '@/data/packet-store';
 import ActionsCard from '@/components/workcase/ActionsCard';
 import { NotesModal, PendModal, ReferralModal, ResubmitModal, RouteModal, UploadModal } from '@/components/workcase/CaseModals';
 import { CASES, getCase, getWorkableCases } from '@/data/cases';
@@ -445,7 +447,27 @@ function WorkView({ c }) {
       </div>
 
       <NotesModal open={modal === 'notes'} onClose={close} notes={notes} onAdd={(n) => { setNotes((p) => [{ ...n, id: `${c.id}-n-${p.length + 1}`, author: 'you', timestamp: new Date().toISOString() }, ...p]); done('Note added.'); }} />
-      <UploadModal open={modal === 'upload'} onClose={close} onDone={done} />
+      {/*
+        Uploaded files become evidence blocks on this case's packet, so a PDF
+        representment dropped here shows up under Template view and can satisfy
+        the evidence checklist. Previously this modal counted the files and
+        discarded them.
+      */}
+      <UploadModal
+        open={modal === 'upload'}
+        onClose={close}
+        onDone={async (files) => {
+          getPacket(c); // ensure the packet exists before appending to it
+          const blocks = await blocksFromFiles(files, fileToDataUrl);
+          addBlocks(c.id, blocks);
+          const images = blocks.filter((b) => b.kind === 'screenshot').length;
+          done(
+            images
+              ? `${blocks.length} attached — ${images} image(s) need redaction before they can be sent.`
+              : `${blocks.length} attached to the packet.`,
+          );
+        }}
+      />
       <PendModal open={modal === 'pend'} onClose={close} onDone={done} />
       <RouteModal open={modal === 'route'} onClose={close} onDone={(_, msg) => done(msg)} />
       <ReferralModal open={modal === 'referral'} onClose={close} onDone={done} />

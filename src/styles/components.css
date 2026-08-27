@@ -905,3 +905,26 @@
 
 .dt__totals td { border-top: 2px solid var(--c-line-strong); background: var(--c-surface-sunken); font-weight: 700; padding-top: 8px; padding-bottom: 8px; }
 .dt__totals-label { font-size: var(--fs-micro); font-weight: 700; color: var(--c-ink-muted); text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
+
+/* ---------- Evidence checklist ---------- */
+
+.check-row { align-items: baseline; }
+.meter { height: 4px; border-radius: var(--r-pill); background: var(--c-line); overflow: hidden; }
+.meter__fill { height: 100%; background: var(--c-primary); border-radius: var(--r-pill); transition: width 200ms ease; }
+
+/* ---------- Compiled packet ---------- *
+   Reuses the document letterhead so the preview reads as the thing that gets
+   sent, not as another panel of the editor. */
+
+.compiled { background: var(--c-surface); padding: var(--s-6); border: 1px solid var(--c-line); border-radius: var(--r-md); font-size: var(--fs-small); line-height: 1.6; }
+.compiled p { margin: 0 0 var(--s-2); }
+.compiled__section { margin-top: var(--s-5); }
+.compiled__section-head { font-size: var(--fs-h3); font-weight: 700; margin: 0 0 var(--s-2); }
+.compiled__index { margin: 0; padding-left: var(--s-5); }
+.compiled__index li { margin-bottom: 3px; }
+
+.compiled__exhibit { margin-top: var(--s-5); padding-top: var(--s-4); border-top: 1px solid var(--c-line); }
+.compiled__exhibit-head { display: flex; align-items: center; gap: var(--s-2); font-size: var(--fs-body); font-weight: 700; margin: 0 0 var(--s-2); }
+.compiled__image { display: block; max-width: 100%; height: auto; border: 1px solid var(--c-line); border-radius: var(--r-sm); }
+.compiled__attachment { display: flex; gap: var(--s-2); align-items: flex-start; padding: var(--s-3); border: 1px dashed var(--c-line-strong); border-radius: var(--r-md); background: var(--c-surface-sunken); }
+.compiled__note { font-size: var(--fs-micro); color: var(--c-ink-muted); margin-top: var(--s-2); }

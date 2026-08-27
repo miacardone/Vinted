@@ -25,7 +25,11 @@ export const BLOCK_KINDS = {
   narrative: { label: 'Narrative', icon: 'file', description: 'Argument text submitted in the body of the response.' },
   evidence: { label: 'Evidence', icon: 'checklist', description: 'A document already attached to the case.' },
   screenshot: { label: 'Screenshot', icon: 'image', description: 'A pasted or uploaded image exhibit.' },
+  attachment: { label: 'Attachment', icon: 'file', description: 'A file supplied as-is, such as a PDF the merchant wrote themselves.' },
 };
+
+/** Unknown kinds must not take the editor down — see the note in DisputeEditor. */
+export const blockKind = (kind) => BLOCK_KINDS[kind] ?? { label: 'Block', icon: 'file', description: '' };
 
 /* ------------------------------------------------------------------ *
  * Redaction reasons
