@@ -898,3 +898,10 @@
 }
 .dt__th--drop-left::before { left: -1.5px; }
 .dt__th--drop-right::after { right: -1.5px; }
+
+/* ---------- Totals row ---------- *
+   Sits under the body with a heavier top rule so it reads as a summary of the
+   column rather than one more record in it. */
+
+.dt__totals td { border-top: 2px solid var(--c-line-strong); background: var(--c-surface-sunken); font-weight: 700; padding-top: 8px; padding-bottom: 8px; }
+.dt__totals-label { font-size: var(--fs-micro); font-weight: 700; color: var(--c-ink-muted); text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }

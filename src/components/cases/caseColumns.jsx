@@ -2,6 +2,7 @@ import { Badge } from '@/components/ui/Surface';
 import { TruncatedText } from '@/components/ui/Overlay';
 import Icon from '@/components/ui/Icon';
 import brand from '@/brand/brand.config';
+import { CASES } from '@/data/cases';
 import { columnsFor, getCaseType } from '@/domain/caseTypes';
 import { DOC_STATUSES, OUTCOMES, STATUSES, getDocStatus, getOutcome, getStatus } from '@/domain/statuses';
 import { formatCurrency, formatDueIn, formatShortDate, urgencyOf } from '@/utils/format';
@@ -58,6 +59,44 @@ const BADGE_MIN_WIDTH = {
   outcome: badgeFloor(OUTCOMES),
   docStatus: badgeFloor(DOC_STATUSES),
 };
+
+/**
+ * MONEY GETS A FLOOR TOO.
+ *
+ * A truncated word is still readable from its first half. A truncated number
+ * is not merely unreadable, it is WRONG — "€1,234.5…" reads as a smaller
+ * figure than it is, and nothing on screen says it was cut. Prose can carry
+ * the compression; a figure cannot.
+ *
+ * Measured, this column does not currently clip: the tenant's amounts run to
+ * six or seven characters and the column sits comfortably wider. The floor is
+ * here as a guarantee rather than a repair — a tenant with larger amounts, or
+ * a currency whose symbol and grouping are wider, must not be able to
+ * introduce a silently wrong number by changing a config value.
+ *
+ * Sized from the widest figure the tenant's own thresholds imply, not from a
+ * fixed guess, and via the real formatter so the currency symbol, grouping
+ * separators and decimal places are the ones that will actually render.
+ */
+const widestMoney = () => {
+  /*
+   * The widest string this column renders is the TOTAL, not any single cell —
+   * and the totals row is wider than every amount above it by orders of
+   * magnitude. Sizing to the cells alone clipped "€215,805.27" to fit a column
+   * built for "€162.07", which is precisely the silently-wrong number this
+   * floor exists to prevent. Caught by measuring the footer rather than
+   * trusting the change that introduced it.
+   *
+   * Taken from the book itself so it tracks the real data, with the
+   * high-value threshold as a floor for the case where a filter leaves a
+   * single large row and no meaningful total.
+   */
+  const bookTotal = CASES.reduce((sum, c) => sum + (c.disputeAmount ?? 0), 0);
+  const ceiling = (brand.thresholds?.routingHighValue ?? 1000) * 10;
+  return Math.max(formatCurrency(bookTotal).length, formatCurrency(ceiling).length);
+};
+
+const MONEY_MIN_WIDTH = `calc(${(widestMoney() * 0.77).toFixed(2)}ch + 20px)`;
 
 const schemeVar = (colorKey) => `var(--c-${colorKey.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)})`;
 
@@ -146,6 +185,9 @@ export function buildCaseColumns(caseType = 'all', { linkedIds } = {}) {
   return columnsFor(caseType).map((c) => ({
     sortable: true,
     ...(BADGE_MIN_WIDTH[c.key] ? { minWidth: BADGE_MIN_WIDTH[c.key] } : null),
+    ...(c.key === 'disputeAmount'
+      ? { minWidth: MONEY_MIN_WIDTH, totalCell: (sum) => formatCurrency(sum) }
+      : null),
     ...(c.key === 'reference'
       ? { sortValue: (row) => (row.caseType === 'chargeback' ? row.arn ?? '' : row.itemTitle ?? '') }
       : null),

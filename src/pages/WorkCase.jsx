@@ -92,6 +92,8 @@ function RecordsView() {
         <DataTable
           columns={columns}
           rows={pageRows}
+          /* Totals cover every filtered row, not just this page — the label says so. */
+          totals={{ keys: ['disputeAmount'], rows: sorted, label: `Total · ${formatNumber(sorted.length)} ${sorted.length === 1 ? 'case' : 'cases'}` }}
           rowKey={(r) => r.id}
           density={density}
           sort={sort}
@@ -315,7 +317,7 @@ function RelatedCases({ c, groups }) {
 const CENTRE_TABS = (docs) => [
   { value: 'merchant', label: `Merchant docs (${docs.merchant})` },
   { value: 'issuer', label: `Issuer docs (${docs.issuer})` },
-  { value: 'editor', label: 'Dispute editor' },
+  { value: 'editor', label: 'Template view' },
   { value: 'related', label: 'Related cases' },
 ];
 

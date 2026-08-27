@@ -239,6 +239,8 @@ export function CaseManagement() {
         <DataTable
           columns={columns}
           rows={pageRows}
+          /* Totals cover every filtered row, not just this page — the label says so. */
+          totals={{ keys: ['disputeAmount'], rows: sorted, label: `Total · ${formatNumber(sorted.length)} ${sorted.length === 1 ? 'case' : 'cases'}` }}
           rowKey={(r) => r.id}
           density={density}
           sort={sort}

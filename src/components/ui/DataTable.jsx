@@ -1,5 +1,6 @@
 import { Fragment, useState } from 'react';
 import Icon from '@/components/ui/Icon';
+import { columnHelp } from '@/domain/columnHelp';
 import { Button, IconButton } from '@/components/ui/Surface';
 import { Popover, Tooltip, TruncatedText } from '@/components/ui/Overlay';
 import { copyToClipboard, downloadCsv, downloadExcel } from '@/utils/export';
@@ -179,6 +180,16 @@ export function DataTable({
   rowDrag,
   onRowClick,
   empty,
+  /**
+   * `{ keys, rows, label }` — sum these columns into a footer row.
+   *
+   * `rows` is passed EXPLICITLY and is meant to be the filtered set, not the
+   * page. A paginated table that totals only the rows it happens to be showing
+   * reports "€4,812" under a filter that actually holds €312,000, which is
+   * worse than showing nothing — so the caller states what it is totalling and
+   * the footer says so out loud.
+   */
+  totals,
 }) {
   const [hint, setHint] = useState(null);
   const [invalidId, setInvalidId] = useState(null);
@@ -268,6 +279,7 @@ export function DataTable({
             {columns.map((c, i) => {
               const active = sort?.key === c.key;
               const draggableCol = i >= pinnedCount;
+              const help = columnHelp(c);
               const header = c.sortable && onSort ? (
                 <button type="button" className="dt__sort-btn" onClick={() => onSort(c.key)}>
                   <span className="truncate">{c.header}</span>
@@ -308,8 +320,14 @@ export function DataTable({
                   {/* Handle appears on hover — the column is draggable, but the
                       header should not look like a control until you go for it. */}
                   {draggableCol && <Icon name="drag" size={11} className="dt__th-handle" aria-hidden />}
-                  {/* Fit mode truncates headers, so they get a tooltip. */}
-                  {fit ? <Tooltip label={c.header}>{header}</Tooltip> : header}
+                  {/*
+                    Headers explain themselves on hover. Fit mode truncates
+                    them so a tooltip is required there regardless; elsewhere it
+                    appears only when the column has help text to give.
+                  */}
+                  {help
+                    ? <Tooltip label={<><span className="tooltip__title">{c.header}</span>{help}</>} wide>{header}</Tooltip>
+                    : fit ? <Tooltip label={c.header}>{header}</Tooltip> : header}
                 </th>
               );
             })}
@@ -402,6 +420,49 @@ export function DataTable({
             );
           })}
         </tbody>
+
+        {/*
+          Totals describe `totals.rows` — the filtered set the caller handed in
+          — not the page being displayed, and the label says which. A total that
+          silently covers ten of nine hundred rows is a wrong number, not a
+          partial one.
+        */}
+        {totals?.keys?.length > 0 && rows.length > 0 && (
+          <tfoot>
+            <tr className="dt__totals">
+              {rowDrag && <td className="dt__lead" />}
+              {selection && <td className="dt__lead" />}
+              {expansion && <td className="dt__lead" />}
+              {(() => {
+                const source = totals.rows ?? rows;
+                const firstTotalled = columns.findIndex((c) => totals.keys.includes(c.key));
+                // The label spans everything before the first totalled column.
+                // Dropped into cell 0 alone it landed in the pinned Actions
+                // column and rendered as "TOTAL · 901 CA…".
+                const labelSpan = firstTotalled > 0 ? firstTotalled : 1;
+
+                return (
+                  <>
+                    <td colSpan={labelSpan} style={{ textAlign: 'left' }}>
+                      <span className="dt__totals-label">{totals.label ?? 'Total'}</span>
+                    </td>
+                    {columns.slice(labelSpan).map((c) => {
+                      if (!totals.keys.includes(c.key)) return <td key={c.key} style={{ textAlign: c.align }} />;
+                      const sum = source.reduce((acc, r) => acc + (Number(r[c.key]) || 0), 0);
+                      return (
+                        <td key={c.key} style={{ textAlign: c.align }}>
+                          <span className="mono strong">
+                            {c.totalCell ? c.totalCell(sum, source) : formatNumber(Math.round(sum * 100) / 100)}
+                          </span>
+                        </td>
+                      );
+                    })}
+                  </>
+                );
+              })()}
+            </tr>
+          </tfoot>
+        )}
       </table>
     </div>
   );
